@@ -99,16 +99,23 @@ def _mount_mcp(app: FastAPI) -> None:
         )
 
 
+def _resolve_frontend_dir() -> str | None:
+    """Find the frontend dist directory, checking multiple locations."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "frontend", "dist"),
+        os.path.join(os.getcwd(), "frontend", "dist"),
+    ]
+    for candidate in candidates:
+        normalized = os.path.normpath(candidate)
+        if os.path.isdir(normalized):
+            return normalized
+    return None
+
+
 def _mount_frontend(app: FastAPI) -> None:
     """Serve the frontend SPA if the build directory exists."""
-    frontend_dir = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "frontend",
-        "dist",
-    )
-    if not os.path.exists(frontend_dir):
+    frontend_dir = _resolve_frontend_dir()
+    if frontend_dir is None:
         return
 
     assets_dir = os.path.join(frontend_dir, "assets")

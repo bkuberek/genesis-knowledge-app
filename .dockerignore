@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+*.egg-info
+dist/
+build/
+
+# Node
+frontend/node_modules
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker
+docker-compose.yml
+docker-compose.override.yml
+
+# Docs and specs
+*.md
+LICENSE
+docs/
+openspec/
+.agents/
+.atl/
+
+# Tests
+tests/
+
+# Environment (secrets)
+.env
+.env.*
+!.env.example

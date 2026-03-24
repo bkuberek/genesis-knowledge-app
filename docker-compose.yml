@@ -15,6 +15,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -35,16 +36,20 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200'"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 15
-      start_period: 30s
+      start_period: 60s
+    restart: unless-stopped
 
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile
+    env_file:
+      - path: .env
+        required: false
     environment:
       ENV_FOR_DYNACONF: production
       KNOWLEDGE_DATABASE__HOST: postgres
@@ -55,8 +60,9 @@ services:
       KNOWLEDGE_KEYCLOAK__SERVER_URL: http://keycloak:8080
       KNOWLEDGE_KEYCLOAK__REALM: knowledge
       KNOWLEDGE_KEYCLOAK__CLIENT_ID: knowledge-app
-      KNOWLEDGE_LLM__API_URL: ${LITE_LLM_PROXY_API_URL:-https://litellm-production-f079.up.railway.app}
-      KNOWLEDGE_LLM__API_KEY: ${LITE_LLM_PROXY_API_KEY:-}
+      KNOWLEDGE_KEYCLOAK__CLIENT_SECRET: knowledge-app-secret
+      KNOWLEDGE_LLM__API_URL: ${KNOWLEDGE_LLM__API_URL:-https://litellm-production-f079.up.railway.app}
+      KNOWLEDGE_LLM__API_KEY: ${KNOWLEDGE_LLM__API_KEY:-}
     ports:
       - "8000:8000"
     volumes:
@@ -66,6 +72,7 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
