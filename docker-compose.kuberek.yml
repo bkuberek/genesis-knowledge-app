@@ -22,7 +22,10 @@ services:
   # PostgreSQL (Database)
   # ==========================================================================
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    image: knowledge-postgres:latest
     container_name: knowledge_postgres
     environment:
       POSTGRES_USER: ${DB_USERNAME:-knowledge}
@@ -30,7 +33,6 @@ services:
       POSTGRES_DB: ${DB_NAME:-knowledge_db}
     volumes:
       - knowledge_postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init-keycloak-db.sql:/docker-entrypoint-initdb.d/init-keycloak-db.sql
     networks:
       - coolify
     healthcheck:
