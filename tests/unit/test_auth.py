@@ -127,6 +127,8 @@ class TestKeycloakAuthAdapter:
     def test_initializes_with_settings(self, mock_settings):
         mock_settings.keycloak.server_url = "http://kc:8080"
         mock_settings.keycloak.realm = "myrealm"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
 
@@ -134,9 +136,42 @@ class TestKeycloakAuthAdapter:
         assert adapter._jwks_url == ("http://kc:8080/realms/myrealm/protocol/openid-connect/certs")
 
     @patch("knowledge_workers.adapters.keycloak_auth.settings")
+    def test_initializes_with_split_urls(self, mock_settings):
+        """In Docker, JWKS is fetched via internal URL, issuer matches browser."""
+        mock_settings.keycloak.server_url = "http://keycloak:8080"
+        mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = "http://localhost:8080/realms/knowledge"
+
+        adapter = KeycloakAuthAdapter()
+
+        assert adapter._issuer == "http://localhost:8080/realms/knowledge"
+        assert adapter._jwks_url == (
+            "http://keycloak:8080/realms/knowledge/protocol/openid-connect/certs"
+        )
+
+    @patch("knowledge_workers.adapters.keycloak_auth.settings")
+    def test_initializes_with_explicit_jwks_url(self, mock_settings):
+        mock_settings.keycloak.server_url = "http://localhost:8080"
+        mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = (
+            "http://keycloak:8080/realms/knowledge/protocol/openid-connect/certs"
+        )
+        mock_settings.keycloak.issuer_url = ""
+
+        adapter = KeycloakAuthAdapter()
+
+        assert adapter._issuer == ("http://localhost:8080/realms/knowledge")
+        assert adapter._jwks_url == (
+            "http://keycloak:8080/realms/knowledge/protocol/openid-connect/certs"
+        )
+
+    @patch("knowledge_workers.adapters.keycloak_auth.settings")
     async def test_validate_token_returns_user(self, mock_settings, jwks, valid_token):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
         adapter._jwks = jwks
@@ -151,6 +186,8 @@ class TestKeycloakAuthAdapter:
     async def test_validate_token_invalid_token_raises_auth_error(self, mock_settings, jwks):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
         adapter._jwks = jwks
@@ -164,6 +201,8 @@ class TestKeycloakAuthAdapter:
     ):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
         adapter._jwks = {"keys": []}
@@ -178,6 +217,8 @@ class TestKeycloakAuthAdapter:
     ):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
         adapter._jwks = jwks
@@ -193,6 +234,8 @@ class TestKeycloakAuthAdapter:
     async def test_get_public_keys_fetches_from_keycloak(self, mock_settings, jwks):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
 
@@ -215,6 +258,8 @@ class TestKeycloakAuthAdapter:
     async def test_get_public_keys_caches_result(self, mock_settings, jwks):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
         adapter._jwks = jwks
@@ -229,6 +274,8 @@ class TestKeycloakAuthAdapter:
     ):
         mock_settings.keycloak.server_url = "http://localhost:8080"
         mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = ""
 
         adapter = KeycloakAuthAdapter()
         adapter._jwks = jwks
@@ -262,6 +309,35 @@ class TestKeycloakAuthAdapter:
         user = await adapter.validate_token(token)
 
         assert user.name == "Test User"
+
+    @patch("knowledge_workers.adapters.keycloak_auth.settings")
+    async def test_validate_token_with_split_urls_docker_scenario(
+        self, mock_settings, rsa_keypair, jwks
+    ):
+        """Simulate Docker: JWKS via internal URL, issuer matches browser."""
+        mock_settings.keycloak.server_url = "http://keycloak:8080"
+        mock_settings.keycloak.realm = "knowledge"
+        mock_settings.keycloak.jwks_url = ""
+        mock_settings.keycloak.issuer_url = "http://localhost:8080/realms/knowledge"
+
+        adapter = KeycloakAuthAdapter()
+        adapter._jwks = jwks
+
+        token = _create_test_token(
+            rsa_keypair,
+            claims={
+                "sub": str(TEST_USER_ID),
+                "email": "docker@example.com",
+                "preferred_username": "dockeruser",
+                "iss": "http://localhost:8080/realms/knowledge",
+            },
+        )
+
+        user = await adapter.validate_token(token)
+
+        assert user.id == TEST_USER_ID
+        assert user.email == "docker@example.com"
+        assert user.name == "dockeruser"
 
 
 # ---------------------------------------------------------------------------

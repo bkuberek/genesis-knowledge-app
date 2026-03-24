@@ -25,6 +25,8 @@ keycloak.server_url = "http://localhost:8080"
 keycloak.realm = "knowledge"
 keycloak.client_id = "knowledge-app"
 keycloak.client_secret = ""
+keycloak.jwks_url = ""
+keycloak.issuer_url = ""
 
 # Storage
 storage.document_path = "data/documents"

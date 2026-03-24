@@ -60,6 +60,7 @@ services:
       KNOWLEDGE_DATABASE__PASSWORD: knowledge
       KNOWLEDGE_KEYCLOAK__SERVER_URL: http://keycloak:8080
       KNOWLEDGE_KEYCLOAK__REALM: knowledge
+      KNOWLEDGE_KEYCLOAK__ISSUER_URL: http://localhost:8080/realms/knowledge
       KNOWLEDGE_KEYCLOAK__CLIENT_ID: knowledge-app
       KNOWLEDGE_KEYCLOAK__CLIENT_SECRET: knowledge-app-secret
       KNOWLEDGE_LLM__API_URL: ${KNOWLEDGE_LLM__API_URL:-${LITE_LLM_PROXY_API_URL:-https://litellm-production-f079.up.railway.app}}
