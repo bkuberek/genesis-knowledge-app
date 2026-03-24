@@ -10,6 +10,8 @@ from knowledge_core.ports.llm_port import LLMPort
 from knowledge_workers.ingestion.entity_extractor import EntityExtractor
 from knowledge_workers.ingestion.entity_resolver import EntityResolver
 from knowledge_workers.parsers import get_parser
+from knowledge_workers.parsers.csv_parser import SUPPORTED_CONTENT_TYPES as CSV_CONTENT_TYPES
+from knowledge_workers.parsers.csv_parser import CsvParser
 
 MAX_EXISTING_ENTITIES_LIMIT = 1000
 
@@ -18,7 +20,8 @@ class IngestionPipeline:
     """Full document ingestion pipeline: store, parse, extract, resolve, save.
 
     Orchestrates the complete flow from raw file/URL to extracted entities
-    and relationships stored in the database.
+    and relationships stored in the database. CSV files are parsed directly
+    into entities without LLM extraction.
     """
 
     def __init__(
@@ -50,6 +53,8 @@ class IngestionPipeline:
 
         try:
             file_path = await self._store_file(document, filename, content)
+            if self._is_csv(content_type):
+                return await self._extract_csv_entities(document, file_path)
             text = await self._parse_content(document, content_type, file_path)
             return await self._extract_and_save(document, text, filename)
         except Exception as exc:
@@ -71,11 +76,10 @@ class IngestionPipeline:
                 document.filename,
                 content,
             )
-            text = await self._parse_content(
-                document,
-                document.content_type or "",
-                file_path,
-            )
+            content_type = document.content_type or ""
+            if self._is_csv(content_type):
+                return await self._extract_csv_entities(document, file_path)
+            text = await self._parse_content(document, content_type, file_path)
             return await self._extract_and_save(document, text, document.filename)
         except Exception as exc:
             return await self._handle_pipeline_error(document, exc)
@@ -99,6 +103,42 @@ class IngestionPipeline:
             return await self._extract_and_save(document, text, url)
         except Exception as exc:
             return await self._handle_pipeline_error(document, exc)
+
+    # -- CSV direct extraction (no LLM) -----------------------------------
+
+    async def _extract_csv_entities(
+        self,
+        document: Document,
+        file_path: str,
+    ) -> Document:
+        """Extract entities directly from CSV rows without LLM.
+
+        Structured data doesn't need LLM interpretation — each row
+        becomes an entity with columns as typed properties.
+        """
+        await self._update_status(document.id, DocumentStatus.PROCESSING, stage=2)
+        csv_parser = CsvParser()
+        raw_entities = csv_parser.extract_entities(file_path)
+
+        await self._update_status(document.id, DocumentStatus.PROCESSING, stage=4)
+        existing_entities = await self._repository.search_entities(
+            "",
+            limit=MAX_EXISTING_ENTITIES_LIMIT,
+        )
+        resolved_entities = self._resolver.resolve(raw_entities, existing_entities)
+
+        await self._update_status(document.id, DocumentStatus.PROCESSING, stage=5)
+        await self._repository.save_entities(resolved_entities, document.id)
+
+        await self._update_status(document.id, DocumentStatus.COMPLETE, stage=5)
+        return document.model_copy(
+            update={
+                "status": DocumentStatus.COMPLETE,
+                "stage": 5,
+            }
+        )
+
+    # -- LLM extraction (for unstructured formats) ------------------------
 
     async def _store_file(
         self,
@@ -165,6 +205,13 @@ class IngestionPipeline:
                 "stage": 5,
             }
         )
+
+    # -- Shared helpers ---------------------------------------------------
+
+    @staticmethod
+    def _is_csv(content_type: str) -> bool:
+        """Check if the content type represents a CSV file."""
+        return content_type in CSV_CONTENT_TYPES
 
     async def _handle_pipeline_error(
         self,

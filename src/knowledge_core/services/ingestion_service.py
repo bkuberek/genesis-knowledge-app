@@ -16,6 +16,8 @@ class IngestionService:
     Orchestrates document processing: LLM-based entity extraction,
     entity resolution against existing records, and persistence.
     Accepts pre-parsed text to maintain hexagonal architecture purity.
+
+    For CSV documents, use ``process_csv_entities`` to bypass LLM extraction.
     """
 
     def __init__(
@@ -76,6 +78,52 @@ class IngestionService:
             )
             if relationships:
                 await self._repository.save_relationships(relationships)
+
+            await self._update_status(document.id, DocumentStatus.COMPLETE, stage=5)
+            return document.model_copy(
+                update={
+                    "status": DocumentStatus.COMPLETE,
+                    "stage": 5,
+                }
+            )
+
+        except Exception as exc:
+            await self._update_status(
+                document.id,
+                DocumentStatus.ERROR,
+                error_message=str(exc),
+            )
+            return document.model_copy(
+                update={
+                    "status": DocumentStatus.ERROR,
+                    "error_message": str(exc),
+                }
+            )
+
+    async def process_csv_entities(
+        self,
+        document: Document,
+        raw_entities: list[dict[str, Any]],
+    ) -> Document:
+        """Process pre-extracted CSV entities through resolution and persistence.
+
+        Accepts entity dicts from CsvParser.extract_entities(), resolves
+        against existing entities, and saves without LLM involvement.
+        """
+        from knowledge_workers.ingestion.entity_resolver import EntityResolver
+
+        resolver = EntityResolver()
+
+        try:
+            await self._update_status(document.id, DocumentStatus.PROCESSING, stage=4)
+            existing_entities = await self._repository.search_entities(
+                "",
+                limit=MAX_EXISTING_ENTITIES_LIMIT,
+            )
+            resolved_entities = resolver.resolve(raw_entities, existing_entities)
+
+            await self._update_status(document.id, DocumentStatus.PROCESSING, stage=5)
+            await self._repository.save_entities(resolved_entities, document.id)
 
             await self._update_status(document.id, DocumentStatus.COMPLETE, stage=5)
             return document.model_copy(

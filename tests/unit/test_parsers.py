@@ -1,7 +1,14 @@
+import tempfile
+
 import pytest
 
 from knowledge_workers.parsers import get_parser
-from knowledge_workers.parsers.csv_parser import CsvParser
+from knowledge_workers.parsers.csv_parser import (
+    CsvParser,
+    _coerce_value,
+    _detect_name_column,
+    _infer_entity_type,
+)
 from knowledge_workers.parsers.docx_parser import DocxParser
 from knowledge_workers.parsers.pdf_parser import PdfParser
 from knowledge_workers.parsers.text_parser import TextParser
@@ -24,6 +31,138 @@ class TestCsvParser:
     def test_rejects_unsupported_content_type(self):
         parser = CsvParser()
         assert parser.supports("application/pdf") is False
+
+
+class TestCsvParserExtractEntities:
+    """Tests for direct CSV-to-entity extraction."""
+
+    def _write_csv(self, content: str) -> str:
+        """Write CSV content to a temp file and return its path."""
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+        ) as tmp:
+            tmp.write(content)
+            return tmp.name
+
+    def test_extracts_entities_from_simple_csv(self):
+        csv_content = "company_name,industry,revenue\nAcme Corp,tech,5000\nBeta Inc,finance,3000\n"
+        path = self._write_csv(csv_content)
+        parser = CsvParser()
+        entities = parser.extract_entities(path)
+
+        assert len(entities) == 2
+        assert entities[0]["name"] == "Acme Corp"
+        assert entities[0]["type"] == "company"
+        assert entities[0]["properties"]["industry"] == "tech"
+        assert entities[0]["properties"]["revenue"] == 5000
+
+    def test_detects_company_name_column(self):
+        csv_content = "company_name,arr_thousands\nSignalTech,816\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        assert entities[0]["name"] == "SignalTech"
+
+    def test_falls_back_to_first_column_for_name(self):
+        csv_content = "label,value\nfoo,42\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        assert entities[0]["name"] == "foo"
+
+    def test_preserves_numeric_types(self):
+        csv_content = "name,count,rate\nWidget,100,3.14\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        props = entities[0]["properties"]
+        assert isinstance(props["count"], int)
+        assert isinstance(props["rate"], float)
+
+    def test_empty_csv_returns_no_entities(self):
+        csv_content = "name,value\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        assert entities == []
+
+    def test_skips_rows_with_empty_name(self):
+        csv_content = "name,value\nfoo,1\n,2\nbar,3\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        assert len(entities) == 2
+        names = [e["name"] for e in entities]
+        assert "foo" in names
+        assert "bar" in names
+
+    def test_infers_record_type_for_generic_columns(self):
+        csv_content = "id,status,score\nA,active,99\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        assert entities[0]["type"] == "record"
+
+    def test_handles_nan_values_as_none(self):
+        csv_content = "name,optional\nfoo,\n"
+        path = self._write_csv(csv_content)
+        entities = CsvParser().extract_entities(path)
+
+        assert entities[0]["properties"]["optional"] is None
+
+
+class TestDetectNameColumn:
+    def test_detects_company_name(self):
+        assert _detect_name_column(["company_name", "revenue"]) == "company_name"
+
+    def test_detects_name_column(self):
+        assert _detect_name_column(["id", "name", "age"]) == "name"
+
+    def test_detects_title_column(self):
+        assert _detect_name_column(["title", "author"]) == "title"
+
+    def test_falls_back_to_first_column(self):
+        assert _detect_name_column(["identifier", "value"]) == "identifier"
+
+
+class TestInferEntityType:
+    def test_infers_company_from_column_names(self):
+        assert _infer_entity_type(["company_name", "revenue"]) == "company"
+
+    def test_infers_person_from_column_names(self):
+        assert _infer_entity_type(["person_id", "age"]) == "person"
+
+    def test_returns_record_for_unknown(self):
+        assert _infer_entity_type(["id", "value", "score"]) == "record"
+
+
+class TestCoerceValue:
+    def test_preserves_string(self):
+        assert _coerce_value("hello") == "hello"
+
+    def test_strips_string_whitespace(self):
+        assert _coerce_value("  padded  ") == "padded"
+
+    def test_converts_nan_to_none(self):
+        import numpy as np
+
+        assert _coerce_value(float("nan")) is None
+        assert _coerce_value(np.nan) is None
+
+    def test_preserves_int(self):
+        import numpy as np
+
+        assert _coerce_value(np.int64(42)) == 42
+        assert isinstance(_coerce_value(np.int64(42)), int)
+
+    def test_preserves_float(self):
+        import numpy as np
+
+        result = _coerce_value(np.float64(3.14))
+        assert isinstance(result, float)
+        assert abs(result - 3.14) < 0.001
 
 
 class TestPdfParser:
