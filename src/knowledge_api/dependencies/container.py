@@ -19,6 +19,7 @@ from knowledge_workers.adapters.database_repository import DatabaseRepository
 from knowledge_workers.adapters.document_storage import FileDocumentStorage
 from knowledge_workers.adapters.keycloak_auth import KeycloakAuthAdapter
 from knowledge_workers.ingestion.pipeline import IngestionPipeline
+from knowledge_workers.llm.chat_agent import ChatAgent
 from knowledge_workers.llm.llm_client import LLMClient
 
 
@@ -31,6 +32,7 @@ class Container:
         self.repository: DatabaseRepositoryPort | None = None
         self.auth_adapter: AuthPort | None = None
         self.llm_client: LLMPort | None = None
+        self.chat_agent: ChatAgent | None = None
         self.ingestion_pipeline: IngestionPipeline | None = None
 
     async def initialize(self) -> None:
@@ -40,6 +42,10 @@ class Container:
         self.repository = DatabaseRepository(self.session_factory)
         self.auth_adapter = KeycloakAuthAdapter()
         self.llm_client = LLMClient()
+        self.chat_agent = ChatAgent(
+            llm_client=self.llm_client,
+            repository=self.repository,
+        )
         storage = FileDocumentStorage()
         self.ingestion_pipeline = IngestionPipeline(
             repository=self.repository,

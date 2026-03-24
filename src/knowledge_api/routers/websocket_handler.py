@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -8,6 +9,8 @@ from knowledge_api.dependencies.websocket_auth import authenticate_websocket
 from knowledge_core.domain.chat_message import ChatMessage, MessageRole
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/ws/chat")
@@ -26,7 +29,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
     await _send_session_info(websocket, session_id, history)
 
     with contextlib.suppress(WebSocketDisconnect):
-        await _message_loop(websocket, session_id)
+        await _message_loop(websocket, session_id, history)
 
 
 def _resolve_session_id(websocket: WebSocket) -> uuid.UUID | None:
@@ -59,11 +62,25 @@ async def _send_session_info(
     )
 
 
+def _build_conversation_history(
+    messages: list[ChatMessage],
+) -> list[dict]:
+    """Convert persisted messages to the format the agent expects."""
+    return [
+        {"role": m.role.value, "content": m.content}
+        for m in messages
+        if m.role in {MessageRole.USER, MessageRole.ASSISTANT}
+    ]
+
+
 async def _message_loop(
     websocket: WebSocket,
     session_id: uuid.UUID,
+    history: list[ChatMessage],
 ) -> None:
-    """Receive user messages and respond (stub — Phase 6 adds the agent)."""
+    """Receive user messages, run them through the chat agent, respond."""
+    conversation_history = _build_conversation_history(history)
+
     while True:
         data = await websocket.receive_json()
         user_message = data.get("content", "")
@@ -77,11 +94,18 @@ async def _message_loop(
             content=user_message,
         )
         await container.repository.save_chat_message(user_msg)
+        conversation_history.append({"role": "user", "content": user_message})
 
-        # TODO: Phase 6 will replace this stub with the chat agent
-        assistant_content = (
-            f"I received your message: '{user_message}'. The chat agent is not yet implemented."
-        )
+        try:
+            assistant_content = await container.chat_agent.process_message(
+                user_message=user_message,
+                conversation_history=conversation_history[:-1],
+            )
+        except Exception:
+            logger.exception("Chat agent error for session %s", session_id)
+            assistant_content = (
+                "I'm sorry, something went wrong processing your request. Please try again."
+            )
 
         assistant_msg = ChatMessage(
             session_id=session_id,
@@ -89,6 +113,7 @@ async def _message_loop(
             content=assistant_content,
         )
         await container.repository.save_chat_message(assistant_msg)
+        conversation_history.append({"role": "assistant", "content": assistant_content})
 
         await websocket.send_json(
             {

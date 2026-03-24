@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any
 
 import litellm
@@ -7,12 +8,19 @@ from knowledge_core.config import settings
 from knowledge_core.ports.llm_port import LLMPort
 
 
+def _resolve_setting(dynaconf_value: str, env_var_fallback: str) -> str:
+    """Return dynaconf value if non-empty, else fall back to an env var."""
+    if dynaconf_value:
+        return dynaconf_value
+    return os.environ.get(env_var_fallback, "")
+
+
 class LLMClient(LLMPort):
     """LiteLLM wrapper implementing the LLM port interface."""
 
     def __init__(self) -> None:
-        self._api_base = settings.llm.api_url
-        self._api_key = settings.llm.api_key
+        self._api_base = _resolve_setting(settings.llm.api_url, "LITE_LLM_PROXY_API_URL")
+        self._api_key = _resolve_setting(settings.llm.api_key, "LITE_LLM_PROXY_API_KEY")
         self._default_model = settings.llm.chat_model
 
     async def complete(
