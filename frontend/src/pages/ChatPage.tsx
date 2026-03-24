@@ -4,13 +4,38 @@ import { api } from '../lib/api'
 import { WebSocketManager } from '../lib/websocket'
 import type { ChatSession, ChatMessage, WebSocketMessage } from '../lib/types'
 
+/**
+ * A pending message is one the user sent but hasn't been confirmed by the server yet.
+ * It carries a local ID so we can match and promote it to confirmed messages.
+ */
+interface PendingMessage {
+  localId: number
+  role: 'user'
+  content: string
+  created_at: string
+}
+
+let nextLocalId = 1
+
+function formatTimestamp(iso?: string): string {
+  if (!iso) return ''
+  try {
+    const date = new Date(iso)
+    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
 export default function ChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([])
   const [input, setInput] = useState('')
   const [isWaiting, setIsWaiting] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocketManager | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -20,25 +45,28 @@ export default function ChatPage() {
     api.listSessions().then(setSessions).catch(console.error)
   }, [])
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages or pending messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, pendingMessages])
 
-  // Handle WebSocket messages
+  // Handle WebSocket messages — fixes the race condition
   const handleWsMessage = useCallback((data: WebSocketMessage) => {
     if (data.type === 'session' && data.session_id) {
       setActiveSessionId(data.session_id)
-      if (data.history) {
-        setMessages(
-          data.history.map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            created_at: m.created_at,
-          })),
-        )
-      }
-      // Refresh sessions list to include new session
+
+      // Convert server history to ChatMessage format
+      const serverHistory: ChatMessage[] = (data.history ?? []).map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        created_at: m.created_at,
+      }))
+
+      // MERGE: set confirmed messages from server, but keep pending messages intact.
+      // The pending messages render separately, so we don't lose the user's optimistic input.
+      setMessages(serverHistory)
+
+      // Refresh sessions list to pick up any newly-created session
       api.listSessions().then(setSessions).catch(console.error)
     } else if (data.type === 'title_updated' && data.session_id && data.title) {
       setSessions((prev) =>
@@ -47,10 +75,36 @@ export default function ChatPage() {
         ),
       )
     } else if (data.type === 'message' && data.content) {
-      setMessages((prev) => [
-        ...prev,
-        { role: (data.role ?? 'assistant') as 'user' | 'assistant', content: data.content! },
-      ])
+      // When the assistant responds, promote the oldest pending user message
+      // to confirmed messages and add the assistant response.
+      setPendingMessages((prev) => {
+        const oldest = prev[0]
+        const remaining = prev.slice(1)
+
+        // Promote the pending user message to confirmed
+        if (oldest) {
+          setMessages((confirmed) => [
+            ...confirmed,
+            { role: 'user', content: oldest.content, created_at: oldest.created_at },
+            {
+              role: (data.role ?? 'assistant') as 'user' | 'assistant',
+              content: data.content!,
+            },
+          ])
+        } else {
+          // No pending message — just add the assistant response
+          setMessages((confirmed) => [
+            ...confirmed,
+            {
+              role: (data.role ?? 'assistant') as 'user' | 'assistant',
+              content: data.content!,
+            },
+          ])
+        }
+
+        return remaining
+      })
+
       setIsWaiting(false)
     }
   }, [])
@@ -76,30 +130,43 @@ export default function ChatPage() {
     }
   }, [])
 
+  // Session switching — disconnect old WS, connect to new session
   const handleSelectSession = useCallback(
     (session: ChatSession) => {
+      if (session.id === activeSessionId) return
       setMessages([])
+      setPendingMessages([])
       setIsWaiting(false)
       connectToSession(session.id)
     },
-    [connectToSession],
+    [activeSessionId, connectToSession],
   )
 
   const handleNewChat = useCallback(() => {
     setMessages([])
+    setPendingMessages([])
     setActiveSessionId(null)
     setIsWaiting(false)
-    connectToSession()
-  }, [connectToSession])
+    if (wsRef.current) {
+      wsRef.current.disconnect()
+      wsRef.current = null
+    }
+  }, [])
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      await api.deleteSession(sessionId)
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId))
-      if (activeSessionId === sessionId) {
-        setActiveSessionId(null)
-        setMessages([])
-        wsRef.current?.disconnect()
+      try {
+        await api.deleteSession(sessionId)
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+        if (activeSessionId === sessionId) {
+          setActiveSessionId(null)
+          setMessages([])
+          setPendingMessages([])
+          wsRef.current?.disconnect()
+          wsRef.current = null
+        }
+      } catch (err) {
+        console.error('Failed to delete session:', err)
       }
     },
     [activeSessionId],
@@ -109,26 +176,29 @@ export default function ChatPage() {
     const content = input.trim()
     if (!content || isWaiting) return
 
-    // If not connected yet, start a new session
-    if (!wsRef.current || !wsRef.current.isConnected()) {
-      connectToSession()
-      // Queue send after connection
-      const checkAndSend = () => {
-        if (wsRef.current?.isConnected()) {
-          wsRef.current.send(content)
-        } else {
-          setTimeout(checkAndSend, 100)
-        }
-      }
-      setTimeout(checkAndSend, 200)
-    } else {
-      wsRef.current.send(content)
+    // Add to pending messages (optimistic UI)
+    const pending: PendingMessage = {
+      localId: nextLocalId++,
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
     }
-
-    setMessages((prev) => [...prev, { role: 'user', content }])
+    setPendingMessages((prev) => [...prev, pending])
     setInput('')
     setIsWaiting(true)
     inputRef.current?.focus()
+
+    // If no WebSocket connection, start one — message gets queued automatically
+    if (!wsRef.current || !wsRef.current.isConnected()) {
+      connectToSession()
+      // Use sendOrQueue — it will buffer until WS opens, then flush
+      // We need a short delay for the wsRef to be assigned
+      requestAnimationFrame(() => {
+        wsRef.current?.sendOrQueue(content)
+      })
+    } else {
+      wsRef.current.sendOrQueue(content)
+    }
   }, [input, isWaiting, connectToSession])
 
   const handleKeyDown = useCallback(
@@ -140,6 +210,22 @@ export default function ChatPage() {
     },
     [handleSend],
   )
+
+  // Auto-resize textarea
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+    const textarea = e.target
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
+  }, [])
+
+  // Combined view: confirmed messages + pending (optimistic) messages
+  const allMessages: Array<ChatMessage | PendingMessage> = [
+    ...messages,
+    ...pendingMessages,
+  ]
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId)
 
   return (
     <div className="flex h-full">
@@ -182,7 +268,14 @@ export default function ChatPage() {
                   className="ml-2 hidden shrink-0 rounded p-0.5 text-ink-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 group-hover:block"
                   aria-label="Delete session"
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
                     <path d="M4 4l8 8M12 4l-8 8" />
                   </svg>
                 </button>
@@ -194,31 +287,48 @@ export default function ChatPage() {
 
       {/* Chat area */}
       <div className="flex flex-1 flex-col">
-        {/* Toggle sidebar */}
+        {/* Top bar with sidebar toggle and session title */}
         <div className="flex h-10 shrink-0 items-center border-b border-border px-3">
           <button
             onClick={() => setSidebarOpen((p) => !p)}
             className="rounded p-1 text-ink-muted transition-colors hover:bg-surface-overlay hover:text-ink"
             aria-label="Toggle sidebar"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
               <path d="M2 4h12M2 8h12M2 12h12" />
             </svg>
           </button>
-          {activeSessionId && (
+          {activeSession ? (
             <span className="ml-3 truncate text-xs text-ink-muted">
-              {sessions.find((s) => s.id === activeSessionId)?.title ?? 'Chat'}
+              {activeSession.title}
             </span>
-          )}
+          ) : null}
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-6">
-            {messages.length === 0 && !isWaiting && (
+            {allMessages.length === 0 && !isWaiting && (
               <div className="flex flex-col items-center justify-center pt-24 text-center">
                 <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10 text-accent">
-                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 32 32"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <circle cx="16" cy="16" r="12" />
                     <path d="M12 16l3 3 5-6" />
                   </svg>
@@ -233,25 +343,45 @@ export default function ChatPage() {
               </div>
             )}
 
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`mb-4 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {allMessages.map((msg, idx) => {
+              const isPending = 'localId' in msg
+              const timestamp = formatTimestamp(msg.created_at)
+              const isUser = msg.role === 'user'
+
+              return (
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-accent text-surface'
-                      : 'bg-surface-raised text-ink'
-                  }`}
+                  key={isPending ? `pending-${msg.localId}` : `msg-${idx}`}
+                  className={`mb-4 flex ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  {msg.role === 'assistant' ? (
-                    <div className="prose-chat">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <div className={`max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div
+                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        isUser
+                          ? `bg-accent text-surface ${isPending ? 'opacity-70' : ''}`
+                          : 'bg-surface-raised text-ink'
+                      }`}
+                    >
+                      {msg.role === 'assistant' ? (
+                        <div className="prose-chat">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <span className="whitespace-pre-wrap">{msg.content}</span>
+                      )}
                     </div>
-                  ) : (
-                    <span className="whitespace-pre-wrap">{msg.content}</span>
-                  )}
+                    {timestamp ? (
+                      <div
+                        className={`mt-1 text-[10px] text-ink-muted/60 ${
+                          isUser ? 'text-right' : 'text-left'
+                        }`}
+                      >
+                        {timestamp}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
 
             {isWaiting && (
               <div className="mb-4 flex justify-start">
@@ -273,7 +403,7 @@ export default function ChatPage() {
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               rows={1}

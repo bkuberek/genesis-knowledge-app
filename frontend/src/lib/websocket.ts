@@ -11,6 +11,7 @@ export class WebSocketManager {
   private reconnectAttempts = 0
   private shouldReconnect = true
   private sessionId: string | null = null
+  private messageQueue: string[] = []
 
   connect(sessionId?: string): void {
     this.shouldReconnect = true
@@ -35,6 +36,7 @@ export class WebSocketManager {
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0
+      this.flushQueue()
     }
 
     this.ws.onmessage = (event: MessageEvent) => {
@@ -63,9 +65,31 @@ export class WebSocketManager {
     }
   }
 
+  /**
+   * Send a message immediately if connected, otherwise queue it
+   * to be flushed once the WebSocket opens.
+   */
+  sendOrQueue(content: string): void {
+    const payload = JSON.stringify({ content })
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(payload)
+    } else {
+      this.messageQueue.push(payload)
+    }
+  }
+
   send(content: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ content }))
+    }
+  }
+
+  private flushQueue(): void {
+    while (this.messageQueue.length > 0) {
+      const payload = this.messageQueue.shift()
+      if (payload && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(payload)
+      }
     }
   }
 
@@ -78,6 +102,7 @@ export class WebSocketManager {
 
   disconnect(): void {
     this.shouldReconnect = false
+    this.messageQueue = []
     this.ws?.close()
     this.ws = null
   }
