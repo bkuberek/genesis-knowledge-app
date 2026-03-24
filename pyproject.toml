@@ -68,3 +68,7 @@ patch_tags = ["fix", "perf"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: live integration tests requiring running Docker stack",
+    "llm: tests that require LLM API access (may be slow or costly)",
+]
