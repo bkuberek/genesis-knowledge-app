@@ -55,6 +55,31 @@ class IngestionPipeline:
         except Exception as exc:
             return await self._handle_pipeline_error(document, exc)
 
+    async def process_existing_document(
+        self,
+        document: Document,
+        content: bytes,
+    ) -> Document:
+        """Process an already-saved document through the pipeline.
+
+        Used for background processing after the document record has been
+        created and returned to the client.
+        """
+        try:
+            file_path = await self._store_file(
+                document,
+                document.filename,
+                content,
+            )
+            text = await self._parse_content(
+                document,
+                document.content_type or "",
+                file_path,
+            )
+            return await self._extract_and_save(document, text, document.filename)
+        except Exception as exc:
+            return await self._handle_pipeline_error(document, exc)
+
     async def ingest_url(
         self,
         owner_id: uuid.UUID,
