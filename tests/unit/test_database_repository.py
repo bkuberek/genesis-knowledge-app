@@ -18,6 +18,7 @@ from knowledge_core.domain.entity import Entity
 from knowledge_core.domain.relationship import Relationship
 from knowledge_workers.adapters.database_repository import (
     DatabaseRepository,
+    _build_prefix_tsquery,
     _collect_sample_value,
     _describe_property,
     _is_numeric_string,
@@ -603,3 +604,46 @@ class TestCollectSampleValue:
         descriptor = {"type": "int", "min": 0, "max": 100}
         _collect_sample_value(descriptor, "test")
         assert "samples" not in descriptor
+
+
+class TestBuildPrefixTsquery:
+    """Tests for the _build_prefix_tsquery helper used by search_entities."""
+
+    def test_single_word_produces_prefix_operator(self):
+        assert _build_prefix_tsquery("Orbit") == "Orbit:*"
+
+    def test_multiple_words_joined_with_and(self):
+        assert _build_prefix_tsquery("Orbit Ops") == "Orbit:* & Ops:*"
+
+    def test_strips_tsquery_special_characters(self):
+        result = _build_prefix_tsquery("hello & world | (test)")
+        assert result == "hello:* & world:* & test:*"
+
+    def test_strips_asterisk_and_backslash(self):
+        result = _build_prefix_tsquery("test* foo\\bar")
+        assert result == "test:* & foo:* & bar:*"
+
+    def test_strips_exclamation_mark(self):
+        result = _build_prefix_tsquery("!not this")
+        assert result == "not:* & this:*"
+
+    def test_empty_string_returns_none(self):
+        assert _build_prefix_tsquery("") is None
+
+    def test_whitespace_only_returns_none(self):
+        assert _build_prefix_tsquery("   ") is None
+
+    def test_only_special_chars_returns_none(self):
+        assert _build_prefix_tsquery("&|!()") is None
+
+    def test_single_character_produces_prefix(self):
+        assert _build_prefix_tsquery("O") == "O:*"
+
+    def test_preserves_hyphens_and_underscores(self):
+        """Hyphens and underscores are valid in search terms."""
+        result = _build_prefix_tsquery("orbit-ops under_score")
+        assert result == "orbit-ops:* & under_score:*"
+
+    def test_extra_whitespace_collapsed(self):
+        result = _build_prefix_tsquery("  hello   world  ")
+        assert result == "hello:* & world:*"

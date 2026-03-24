@@ -1,5 +1,6 @@
 """PostgreSQL implementation of DatabaseRepositoryPort."""
 
+import re
 import uuid
 from typing import Any
 
@@ -78,6 +79,24 @@ def _collect_sample_value(descriptor: dict[str, Any], value: str) -> None:
         return
     if value not in samples:
         samples.append(value)
+
+
+_TSQUERY_SPECIAL_CHARS = re.compile(r"[&|!():*\\]")
+
+
+def _build_prefix_tsquery(query: str) -> str | None:
+    """Build a prefix-matching tsquery expression from a user search string.
+
+    Strips tsquery special characters, splits into terms, and joins with ``&``
+    using the ``:*`` prefix operator so that partial words match.
+
+    Returns ``None`` when the sanitized query contains no usable terms.
+    """
+    sanitized = _TSQUERY_SPECIAL_CHARS.sub(" ", query).strip()
+    terms = sanitized.split()
+    if not terms:
+        return None
+    return " & ".join(f"{term}:*" for term in terms)
 
 
 class DatabaseRepository(DatabaseRepositoryPort):
@@ -281,9 +300,11 @@ class DatabaseRepository(DatabaseRepositoryPort):
         async with self._session_factory() as session:
             stmt = select(EntityModel)
             if query:
-                ts_query = func.plainto_tsquery("english", query)
-                stmt = stmt.where(EntityModel.search_vector.op("@@")(ts_query))
-                stmt = stmt.order_by(func.ts_rank(EntityModel.search_vector, ts_query).desc())
+                prefix_expr = _build_prefix_tsquery(query)
+                if prefix_expr:
+                    ts_query = func.to_tsquery("english", prefix_expr)
+                    stmt = stmt.where(EntityModel.search_vector.op("@@")(ts_query))
+                    stmt = stmt.order_by(func.ts_rank(EntityModel.search_vector, ts_query).desc())
             if entity_type:
                 stmt = stmt.where(EntityModel.type == entity_type)
             stmt = stmt.limit(limit)

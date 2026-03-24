@@ -107,6 +107,22 @@ class TestEntitySearch:
         body = response.json()
         assert len(body["entities"]) <= 2
 
+    @pytest.mark.llm
+    async def test_partial_word_search_returns_matches(self, api_client: httpx.AsyncClient):
+        """Prefix search: 'Acm' should match entities containing 'Acme'."""
+        await api_client.post(
+            "/api/graph/knowledge",
+            json={"text": KNOWLEDGE_TEXT, "source": KNOWLEDGE_SOURCE},
+        )
+
+        response = await api_client.get("/api/graph/search", params={"q": "Acm"})
+
+        body = response.json()
+        names = [e["name"].lower() for e in body["entities"]]
+        assert any("acme" in name for name in names), (
+            f"Expected 'Acme' in partial search results, got: {names}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Get single entity
