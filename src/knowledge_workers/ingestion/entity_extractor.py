@@ -40,6 +40,8 @@ IMPORTANT: Return ONLY valid JSON, no markdown formatting."""
 
 EMPTY_EXTRACTION: dict[str, Any] = {"entities": [], "relationships": []}
 
+MAX_EXTRACTION_TOKENS = 16384
+
 
 class EntityExtractor:
     """Extracts entities and relationships from text using an LLM."""
@@ -52,13 +54,24 @@ class EntityExtractor:
         text: str,
         document_context: str = "",
     ) -> dict[str, Any]:
-        """Extract entities and relationships from text using LLM."""
+        """Extract entities and relationships from text using LLM.
+
+        Uses the extraction model when available, with a larger token
+        limit than the default to handle full document content.
+        """
         prompt = self._build_extraction_prompt(text, document_context)
+        model = self._get_extraction_model()
         response = await self._llm.complete(
             messages=[{"role": "user", "content": prompt}],
+            model=model,
             temperature=0.0,
+            max_tokens=MAX_EXTRACTION_TOKENS,
         )
         return self._parse_extraction_response(response)
+
+    def _get_extraction_model(self) -> str | None:
+        """Get the extraction model if the LLM client exposes it."""
+        return getattr(self._llm, "extraction_model", None)
 
     def _build_extraction_prompt(self, text: str, context: str) -> str:
         """Build the extraction prompt with text and context."""

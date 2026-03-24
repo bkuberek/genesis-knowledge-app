@@ -1,4 +1,12 @@
-from knowledge_workers.ingestion.entity_extractor import EntityExtractor
+from unittest.mock import AsyncMock
+
+import pytest
+
+from knowledge_core.ports.llm_port import LLMPort
+from knowledge_workers.ingestion.entity_extractor import (
+    MAX_EXTRACTION_TOKENS,
+    EntityExtractor,
+)
 
 
 class TestParseExtractionResponse:
@@ -52,3 +60,43 @@ class TestStripCodeBlockMarkers:
     def test_leaves_non_code_block_unchanged(self):
         text = '{"key": "value"}'
         assert self._extractor._strip_code_block_markers(text) == '{"key": "value"}'
+
+
+class TestGetExtractionModel:
+    def test_returns_model_when_client_has_attribute(self):
+        mock_llm = AsyncMock(spec=LLMPort)
+        mock_llm.extraction_model = "claude-sonnet-4-5"
+        extractor = EntityExtractor(llm_client=mock_llm)
+        assert extractor._get_extraction_model() == "claude-sonnet-4-5"
+
+    def test_returns_none_when_client_lacks_attribute(self):
+        mock_llm = AsyncMock(spec=LLMPort)
+        extractor = EntityExtractor(llm_client=mock_llm)
+        assert extractor._get_extraction_model() is None
+
+
+class TestExtractUsesExtractionModel:
+    @pytest.mark.asyncio
+    async def test_passes_extraction_model_to_complete(self):
+        mock_llm = AsyncMock(spec=LLMPort)
+        mock_llm.extraction_model = "extraction-model-v1"
+        mock_llm.complete.return_value = '{"entities": [], "relationships": []}'
+
+        extractor = EntityExtractor(llm_client=mock_llm)
+        await extractor.extract("some text", "context")
+
+        mock_llm.complete.assert_called_once()
+        call_kwargs = mock_llm.complete.call_args
+        assert call_kwargs.kwargs["model"] == "extraction-model-v1"
+        assert call_kwargs.kwargs["max_tokens"] == MAX_EXTRACTION_TOKENS
+
+    @pytest.mark.asyncio
+    async def test_passes_none_model_when_not_available(self):
+        mock_llm = AsyncMock(spec=LLMPort)
+        mock_llm.complete.return_value = '{"entities": [], "relationships": []}'
+
+        extractor = EntityExtractor(llm_client=mock_llm)
+        await extractor.extract("some text")
+
+        call_kwargs = mock_llm.complete.call_args
+        assert call_kwargs.kwargs["model"] is None
