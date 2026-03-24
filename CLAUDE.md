@@ -1,8 +1,57 @@
-# Demo Knowledge App
+# Knowledge App
 
-## TBD
+A multi-user knowledge management application with LLM-powered entity extraction and conversational queries.
 
-This is a grefield project and you are going to update this file once you are given instructions.
+## Quick Start
+
+```bash
+# Install dependencies
+uv sync --extra dev
+
+# Start infrastructure
+docker compose up -d postgres keycloak
+
+# Run the API (development)
+uv run uvicorn knowledge_api.app:create_app --factory --reload --host 0.0.0.0 --port 8000
+
+# Run frontend (development)
+cd frontend && npm run dev
+
+# Run tests
+uv run pytest -v
+
+# Lint and format
+uv run ruff check src/ tests/
+uv run ruff format src/ tests/
+
+# CLI
+uv run knowledge serve
+uv run knowledge version
+```
+
+## Architecture
+
+Hexagonal architecture with three packages:
+- `src/knowledge_core/` — Domain entities, ports (ABCs), services, exceptions. Zero framework dependencies.
+- `src/knowledge_api/` — FastAPI inbound adapter: app factory, endpoints, middleware, DI, MCP.
+- `src/knowledge_workers/` — Outbound adapters: PostgreSQL repos, LLM client, parsers, ingestion.
+
+## Conventions
+- One class per file
+- Constructor injection
+- Async everywhere
+- No `from __future__ import annotations` (breaks FastAPI Depends)
+- Line length: 100
+- Ruff rules: E, W, F, I, N, UP, B, SIM, TCH
+- Conventional commits: feat:, fix:, docs:, chore:
+- Test naming: test_<what>_<condition>_<expected>
+
+## Tech Stack
+- Python 3.12+, FastAPI, SQLAlchemy async (asyncpg), PostgreSQL 16
+- Keycloak 26 (OAuth2/OIDC), LiteLLM (anthropic/ prefix)
+- React 18, TypeScript, Vite, TailwindCSS v4
+- Docker Compose, GitHub Actions CI/CD
+- dynaconf (settings.toml + .env), cyclopts (CLI)
 
 ## Spec-Driven Development (SDD) Orchestrator
 

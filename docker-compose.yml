@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: knowledge
+      POSTGRES_DB: knowledge_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-keycloak-db.sql:/docker-entrypoint-initdb.d/init-keycloak-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: knowledge
+      KC_DB_PASSWORD: knowledge
+      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      ENV_FOR_DYNACONF: production
+      KNOWLEDGE_DATABASE__HOST: postgres
+      KNOWLEDGE_DATABASE__PORT: 5432
+      KNOWLEDGE_DATABASE__NAME: knowledge_db
+      KNOWLEDGE_DATABASE__USER: knowledge
+      KNOWLEDGE_DATABASE__PASSWORD: knowledge
+      KNOWLEDGE_KEYCLOAK__SERVER_URL: http://keycloak:8080
+      KNOWLEDGE_KEYCLOAK__REALM: knowledge
+      KNOWLEDGE_KEYCLOAK__CLIENT_ID: knowledge-app
+      KNOWLEDGE_LLM__API_URL: ${LITE_LLM_PROXY_API_URL:-https://litellm-production-f079.up.railway.app}
+      KNOWLEDGE_LLM__API_KEY: ${LITE_LLM_PROXY_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - document_data:/app/data/documents
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  document_data:

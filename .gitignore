@@ -12,9 +12,6 @@ build/
 venv/
 env/
 
-# uv
-uv.lock
-
 # IDE
 .idea/
 .vscode/
@@ -42,6 +39,9 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# SDD internal
+.atl/
 
 # Ruff
 .ruff_cache/

@@ -1,0 +1,33 @@
+[default]
+# Application
+app_name = "Knowledge"
+debug = false
+
+# Database
+database.host = "localhost"
+database.port = 5432
+database.name = "knowledge_db"
+database.user = "knowledge"
+database.password = "knowledge"
+
+# LLM
+llm.api_url = "@format {this.LITE_LLM_PROXY_API_URL|https://litellm-production-f079.up.railway.app}"
+llm.api_key = "@format {this.LITE_LLM_PROXY_API_KEY|}"
+llm.chat_model = "anthropic/claude-sonnet-4-20250514"
+llm.extraction_model = "anthropic/claude-sonnet-4-20250514"
+llm.classification_model = "anthropic/claude-haiku-4-20250414"
+
+# Keycloak
+keycloak.server_url = "http://localhost:8080"
+keycloak.realm = "knowledge"
+keycloak.client_id = "knowledge-app"
+keycloak.client_secret = ""
+
+# Storage
+storage.document_path = "data/documents"
+
+[development]
+debug = true
+
+[production]
+debug = false
