@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "knowledge-app"
-version = "1.3.4"
+version = "1.3.5"
 description = "Knowledge Management web application with entity extraction and graph-based search"
 requires-python = ">=3.12"
 dependencies = [
