@@ -313,6 +313,38 @@ class TestAggregateDataTool:
             property_name=None,
             operation="count",
             group_by=None,
+            filters=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_aggregate_with_filters(self, agent, mock_repository):
+        mock_repository.aggregate_entities.return_value = [
+            {"value": 1500.0},
+        ]
+
+        filters = [
+            {"property": "industry_vertical", "operator": "=", "value": "Fintech"},
+        ]
+        tool_call = {
+            "id": "call_af",
+            "function": {
+                "name": "aggregate_data",
+                "arguments": {
+                    "entity_type": "company",
+                    "property_name": "arr_thousands",
+                    "operation": "avg",
+                    "filters": filters,
+                },
+            },
+        }
+        result = await agent._execute_tool(tool_call)
+        assert result["results"] == [{"value": 1500.0}]
+        mock_repository.aggregate_entities.assert_called_once_with(
+            entity_type="company",
+            property_name="arr_thousands",
+            operation="avg",
+            group_by=None,
+            filters=filters,
         )
 
 
@@ -329,6 +361,9 @@ class TestSystemPrompt:
         assert "aggregate_data" in SYSTEM_PROMPT
         assert "avg" in SYSTEM_PROMPT
         assert "count" in SYSTEM_PROMPT
+
+    def test_documents_aggregate_data_filter_support(self):
+        assert "filters" in SYSTEM_PROMPT.lower()
 
     def test_documents_search_entities_usage(self):
         assert "search_entities" in SYSTEM_PROMPT

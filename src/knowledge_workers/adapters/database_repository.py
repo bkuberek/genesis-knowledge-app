@@ -481,6 +481,7 @@ class DatabaseRepository(DatabaseRepositoryPort):
         property_name: str | None = None,
         operation: str = "count",
         group_by: str | None = None,
+        filters: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         if operation not in ALLOWED_AGGREGATE_OPERATIONS:
             return []
@@ -497,6 +498,11 @@ class DatabaseRepository(DatabaseRepositoryPort):
 
             if entity_type:
                 stmt = stmt.where(EntityModel.type == entity_type)
+
+            if filters:
+                conditions = self._build_filter_conditions(filters)
+                if conditions:
+                    stmt = stmt.where(and_(*conditions))
 
             if group_by:
                 stmt = stmt.group_by(group_col)

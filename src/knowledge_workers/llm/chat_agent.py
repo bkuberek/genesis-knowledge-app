@@ -49,11 +49,13 @@ Operators: =, !=, >, <, >=, <=, contains, like
 ### aggregate_data
 Use for statistical questions: averages, sums, counts, min, max.
 - "What's the average ARR for fintech companies?" -> operation="avg", \
-property_name="arr_thousands", entity_type="company"
-  (then filter results by industry_vertical if needed)
+property_name="arr_thousands", entity_type="company", \
+filters=[{{"property": "industry_vertical", "operator": "=", "value": "Fintech"}}]
 - "Total revenue across all companies?" -> operation="sum"
 - "How many companies per industry?" -> operation="count", group_by="industry"
 Operations: count, avg, sum, min, max. Optional group_by for breakdowns.
+Supports filters (same format as query_data) to narrow the dataset before \
+aggregating.
 
 ### search_entities
 Use ONLY for finding entities by name via full-text search.
@@ -173,6 +175,7 @@ class ChatAgent:
             property_name=args.get("property_name"),
             operation=args.get("operation", "count"),
             group_by=args.get("group_by"),
+            filters=args.get("filters"),
         )
         return {"results": results}
 
@@ -285,7 +288,8 @@ class ChatAgent:
                     "description": (
                         "Compute aggregates (avg, sum, count, min, max) "
                         "on numeric JSONB properties, optionally grouped "
-                        "by another property."
+                        "by another property. Supports filters to narrow "
+                        "the dataset before aggregating."
                     ),
                     "parameters": {
                         "type": "object",
@@ -311,6 +315,43 @@ class ChatAgent:
                             "group_by": {
                                 "type": "string",
                                 "description": ("JSONB property to group results by"),
+                            },
+                            "filters": {
+                                "type": "array",
+                                "description": (
+                                    "Filter conditions applied before aggregating "
+                                    "(same format as query_data filters)"
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "property": {
+                                            "type": "string",
+                                            "description": "JSONB property name",
+                                        },
+                                        "operator": {
+                                            "type": "string",
+                                            "enum": [
+                                                "=",
+                                                "!=",
+                                                ">",
+                                                "<",
+                                                ">=",
+                                                "<=",
+                                                "contains",
+                                                "like",
+                                            ],
+                                        },
+                                        "value": {
+                                            "description": "Value to compare against",
+                                        },
+                                    },
+                                    "required": [
+                                        "property",
+                                        "operator",
+                                        "value",
+                                    ],
+                                },
                             },
                         },
                         "required": ["operation"],

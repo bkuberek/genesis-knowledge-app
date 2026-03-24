@@ -134,4 +134,5 @@ class DatabaseRepositoryPort(abc.ABC):
         property_name: str | None = None,
         operation: str = "count",
         group_by: str | None = None,
+        filters: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]: ...
