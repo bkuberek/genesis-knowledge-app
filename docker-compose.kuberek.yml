@@ -61,7 +61,7 @@ services:
       - KC_DB_URL=jdbc:postgresql://postgres:5432/${KC_DB_NAME:-knowledge_keycloak}
       - KC_DB_USERNAME=${KC_DB_USERNAME:-knowledge}
       - KC_DB_PASSWORD=${KC_DB_PASSWORD}
-      - KC_HOSTNAME=${KC_HOSTNAME:-auth.genesis-knowledge-demo.kuberek.org}
+      - KC_HOSTNAME=${KC_HOSTNAME:-https://auth.genesis-knowledge-demo.kuberek.org}
       - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
       - KC_PROXY_HEADERS=xforwarded
       - KC_HTTP_ENABLED=true
@@ -75,7 +75,7 @@ services:
       - coolify
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.knowledge-keycloak.rule=Host(`${KC_HOSTNAME:-auth.genesis-knowledge-demo.kuberek.org}`)"
+      - "traefik.http.routers.knowledge-keycloak.rule=Host(`${KC_HOSTNAME_FQDN:-auth.genesis-knowledge-demo.kuberek.org}`)"
       - "traefik.http.routers.knowledge-keycloak.entryPoints=http"
       - "traefik.http.services.knowledge-keycloak.loadbalancer.server.port=8080"
     healthcheck:
