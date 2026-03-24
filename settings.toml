@@ -16,9 +16,9 @@ database.password = "knowledge"
 # LLM
 llm.api_url = "https://litellm-production-f079.up.railway.app"
 llm.api_key = ""
-llm.chat_model = "anthropic/claude-sonnet-4-20250514"
-llm.extraction_model = "anthropic/claude-sonnet-4-20250514"
-llm.classification_model = "anthropic/claude-haiku-4-20250414"
+llm.chat_model = "claude-sonnet-4-5"
+llm.extraction_model = "claude-sonnet-4-5"
+llm.classification_model = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Keycloak
 keycloak.server_url = "http://localhost:8080"
