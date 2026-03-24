@@ -12,7 +12,7 @@ Bootstrap the genesis-knowledge-app repository from a greenfield state to a full
 1. **Python monorepo** — `pyproject.toml` (uv, src-layout), three packages: `knowledge_core`, `knowledge_api`, `knowledge_workers`
 2. **Dependencies** — all known deps pinned by major version; dev deps for testing/linting
 3. **Configuration** — `settings.toml` (dynaconf defaults, KNOWLEDGE_ prefix) + `.env.example` (secrets template)
-4. **Docker stack** — `docker-compose.yml` (PostgreSQL 16, Keycloak 24, app service), multi-stage `Dockerfile` (Node frontend build → uv deps → slim runtime)
+4. **Docker stack** — `docker-compose.yml` (PostgreSQL 16, Keycloak 24, app service), multi-stage `Dockerfile` (Node frontend build -> uv deps -> slim runtime)
 5. **Keycloak** — `keycloak/realm-export.json` (realm "knowledge", confidential + public PKCE clients, self-registration, test user)
 6. **Linting** — ruff config (Python 3.12, line-length 100, rules E,W,F,I,N,UP,B,SIM,TCH)
 7. **Testing** — pytest config (asyncio_mode=auto), smoke test importing all packages + app factory
@@ -31,7 +31,7 @@ Bootstrap the genesis-knowledge-app repository from a greenfield state to a full
 
 ## Approach
 
-Single-batch creation — all files are foundational and have no code interdependencies, so they can be created in one pass. Order within batch: root configs → packages → tests → Docker → CI.
+Single-batch creation — all files are foundational and have no code interdependencies, so they can be created in one pass. Order within batch: root configs -> packages -> tests -> Docker -> CI.
 
 ## Architecture Decisions
 
@@ -54,4 +54,4 @@ Single-batch creation — all files are foundational and have no code interdepen
 
 ---
 
-*Generated via SDD (Spec-Driven Development)*
+*Generated via SDD (Spec-Driven Development) | Engram observation #59*

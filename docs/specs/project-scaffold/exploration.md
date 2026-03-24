@@ -62,4 +62,4 @@ All files below are NEW — nothing to modify except `.gitignore` and `.env.samp
 
 ---
 
-*Generated via SDD (Spec-Driven Development)*
+*Generated via SDD (Spec-Driven Development) | Engram observation #57*
