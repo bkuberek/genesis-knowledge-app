@@ -61,7 +61,7 @@ services:
       - KC_DB_URL=jdbc:postgresql://postgres:5432/${KC_DB_NAME:-knowledge_keycloak}
       - KC_DB_USERNAME=${KC_DB_USERNAME:-knowledge}
       - KC_DB_PASSWORD=${KC_DB_PASSWORD}
-      - KC_HOSTNAME=${KC_HOSTNAME:-https://auth.genesis-knowledge-demo.kuberek.org}
+      - KC_HOSTNAME=${KC_HOSTNAME:-https://genesis-knowledge-demo-auth.kuberek.org}
       - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
       - KC_PROXY_HEADERS=xforwarded
       - KC_HTTP_ENABLED=true
@@ -75,7 +75,7 @@ services:
       - coolify
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.knowledge-keycloak.rule=Host(`${KC_HOSTNAME_FQDN:-auth.genesis-knowledge-demo.kuberek.org}`)"
+      - "traefik.http.routers.knowledge-keycloak.rule=Host(`${KC_HOSTNAME_FQDN:-genesis-knowledge-demo-auth.kuberek.org}`)"
       - "traefik.http.routers.knowledge-keycloak.entryPoints=http"
       - "traefik.http.services.knowledge-keycloak.loadbalancer.server.port=8080"
     healthcheck:
@@ -101,7 +101,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       args:
-        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-https://auth.genesis-knowledge-demo.kuberek.org}
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-https://genesis-knowledge-demo-auth.kuberek.org}
     image: knowledge-app:latest
     container_name: knowledge_app
     restart: unless-stopped
@@ -117,7 +117,7 @@ services:
       - KNOWLEDGE_DATABASE__NAME=${DB_NAME:-knowledge_db}
       - KNOWLEDGE_DATABASE__USER=${DB_USERNAME:-knowledge}
       - KNOWLEDGE_DATABASE__PASSWORD=${DB_PASSWORD}
-      - KNOWLEDGE_KEYCLOAK__SERVER_URL=${KEYCLOAK_SERVER_URL:-https://auth.genesis-knowledge-demo.kuberek.org}
+      - KNOWLEDGE_KEYCLOAK__SERVER_URL=${KEYCLOAK_SERVER_URL:-https://genesis-knowledge-demo-auth.kuberek.org}
       - KNOWLEDGE_KEYCLOAK__REALM=knowledge
       - KNOWLEDGE_KEYCLOAK__CLIENT_ID=knowledge-app
       - KNOWLEDGE_KEYCLOAK__CLIENT_SECRET=${KC_CLIENT_SECRET:-knowledge-app-secret}
