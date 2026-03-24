@@ -4,24 +4,47 @@
 # Deployed via Coolify git integration.
 #
 # Infrastructure:
-# - PostgreSQL: uses shared-postgres:5432 on the kuberek.org homelab
-# - Keycloak: own instance, backed by shared-postgres (knowledge_keycloak DB)
-# - Connects to coolify network to reach shared services
+# - PostgreSQL: own instance (postgres:16-alpine), internal only
+# - Keycloak: own instance, backed by local postgres (knowledge_keycloak DB)
+# - Connects to coolify network to reach Traefik reverse proxy
 # - Coolify handles reverse proxy (Traefik) and SSL termination
 # - SSL terminated at Cloudflare tunnel, Traefik uses HTTP entrypoints
 #
 # Pre-deployment steps:
-# 1. Create `knowledge_db` database and user on shared-postgres:
-#      CREATE USER knowledge WITH PASSWORD '<password>';
-#      CREATE DATABASE knowledge_db OWNER knowledge;
-# 2. Create `knowledge_keycloak` database on shared-postgres:
-#      CREATE DATABASE knowledge_keycloak OWNER knowledge;
-# 3. Set environment variables in Coolify:
-#      DB_PASSWORD, KC_DB_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
+# 1. Set environment variables in Coolify:
+#      DB_USERNAME, DB_PASSWORD, DB_NAME,
+#      KC_DB_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
 #      KC_CLIENT_SECRET, LLM_API_KEY
 # ============================================================================
 
 services:
+  # ==========================================================================
+  # PostgreSQL (Database)
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: knowledge_postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-knowledge}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-knowledge}
+      POSTGRES_DB: ${DB_NAME:-knowledge_db}
+    volumes:
+      - knowledge_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-keycloak-db.sql:/docker-entrypoint-initdb.d/init-keycloak-db.sql
+    networks:
+      - coolify
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-knowledge} -d ${DB_NAME:-knowledge_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+
   # ==========================================================================
   # Keycloak (Identity Provider)
   # ==========================================================================
@@ -35,7 +58,7 @@ services:
     restart: unless-stopped
     environment:
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://${KC_DB_HOST:-shared-postgres}:${KC_DB_PORT:-5432}/${KC_DB_NAME:-knowledge_keycloak}
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/${KC_DB_NAME:-knowledge_keycloak}
       - KC_DB_USERNAME=${KC_DB_USERNAME:-knowledge}
       - KC_DB_PASSWORD=${KC_DB_PASSWORD}
       - KC_HOSTNAME=${KC_HOSTNAME:-auth.genesis-knowledge-demo.kuberek.org}
@@ -45,6 +68,9 @@ services:
       - KC_HEALTH_ENABLED=true
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - coolify
     labels:
@@ -80,11 +106,13 @@ services:
     container_name: knowledge_app
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       knowledge_keycloak:
         condition: service_healthy
     environment:
       - ENV_FOR_DYNACONF=production
-      - KNOWLEDGE_DATABASE__HOST=${DB_HOST:-shared-postgres}
+      - KNOWLEDGE_DATABASE__HOST=${DB_HOST:-postgres}
       - KNOWLEDGE_DATABASE__PORT=${DB_PORT:-5432}
       - KNOWLEDGE_DATABASE__NAME=${DB_NAME:-knowledge_db}
       - KNOWLEDGE_DATABASE__USER=${DB_USERNAME:-knowledge}
@@ -131,4 +159,5 @@ networks:
 # Volumes
 # ============================================================================
 volumes:
+  knowledge_postgres_data:
   knowledge_documents:
