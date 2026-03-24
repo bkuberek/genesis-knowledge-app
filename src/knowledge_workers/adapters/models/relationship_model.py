@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_workers.adapters.models.base import Base
@@ -33,4 +33,7 @@ class RelationshipModel(Base):
         ForeignKey("documents.id"),
         nullable=True,
     )
-    extracted_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    extracted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
