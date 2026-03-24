@@ -21,7 +21,7 @@ services:
   # ==========================================================================
   # PostgreSQL (Database)
   # ==========================================================================
-  postgres:
+  knowledge_db:
     build:
       context: .
       dockerfile: docker/postgres/Dockerfile
@@ -60,7 +60,7 @@ services:
     restart: unless-stopped
     environment:
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://postgres:5432/${KC_DB_NAME:-knowledge_keycloak}
+      - KC_DB_URL=jdbc:postgresql://knowledge_db:5432/${KC_DB_NAME:-knowledge_keycloak}
       - KC_DB_USERNAME=${DB_USERNAME:-knowledge}
       - KC_DB_PASSWORD=${DB_PASSWORD:-knowledge}
       - KC_HOSTNAME=${KC_HOSTNAME:-https://genesis-knowledge-demo-auth.kuberek.org}
@@ -71,7 +71,7 @@ services:
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
     depends_on:
-      postgres:
+      knowledge_db:
         condition: service_healthy
     networks:
       - coolify
@@ -108,13 +108,13 @@ services:
     container_name: knowledge_app
     restart: unless-stopped
     depends_on:
-      postgres:
+      knowledge_db:
         condition: service_healthy
       knowledge_keycloak:
         condition: service_started
     environment:
       - ENV_FOR_DYNACONF=production
-      - KNOWLEDGE_DATABASE__HOST=${DB_HOST:-postgres}
+      - KNOWLEDGE_DATABASE__HOST=${DB_HOST:-knowledge_db}
       - KNOWLEDGE_DATABASE__PORT=${DB_PORT:-5432}
       - KNOWLEDGE_DATABASE__NAME=${DB_NAME:-knowledge_db}
       - KNOWLEDGE_DATABASE__USER=${DB_USERNAME:-knowledge}
