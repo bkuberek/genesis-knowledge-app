@@ -71,16 +71,21 @@ class LLMClient(LLMPort):
         return result
 
     def _parse_tool_call(self, tool_call: Any) -> dict[str, Any]:
-        """Parse a single tool call from the LLM response."""
+        """Parse a single tool call from the LLM response.
+
+        Keeps function.arguments as a JSON string for LiteLLM compatibility.
+        LiteLLM expects arguments to be a JSON string when tool_calls are
+        passed back in message history for subsequent completion requests.
+        """
         raw_arguments = tool_call.function.arguments
-        parsed_arguments = (
-            json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+        arguments_str = (
+            raw_arguments if isinstance(raw_arguments, str) else json.dumps(raw_arguments)
         )
         return {
             "id": tool_call.id,
             "type": "function",
             "function": {
                 "name": tool_call.function.name,
-                "arguments": parsed_arguments,
+                "arguments": arguments_str,
             },
         }

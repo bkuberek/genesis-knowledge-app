@@ -148,7 +148,7 @@ class TestProcessMessage:
                     "type": "function",
                     "function": {
                         "name": "describe_tables",
-                        "arguments": {},
+                        "arguments": "{}",
                     },
                 },
             ],
@@ -181,7 +181,7 @@ class TestProcessMessage:
                     "type": "function",
                     "function": {
                         "name": "describe_tables",
-                        "arguments": {},
+                        "arguments": "{}",
                     },
                 },
             ],
