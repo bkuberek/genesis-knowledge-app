@@ -100,16 +100,27 @@ body {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 0.75em;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .prose-chat th,
 .prose-chat td {
   border: 1px solid var(--color-border);
   padding: 0.5em 0.75em;
   text-align: left;
+  white-space: nowrap;
 }
 .prose-chat th {
   background: var(--color-surface-overlay);
   font-weight: 600;
+  color: var(--color-accent);
+}
+.prose-chat tr:nth-child(even) {
+  background: var(--color-surface-overlay);
+}
+.prose-chat tr:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 .prose-chat a {
   color: var(--color-accent);
@@ -117,6 +128,19 @@ body {
 }
 .prose-chat strong {
   font-weight: 600;
+}
+.prose-chat del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1em 0;
+}
+.prose-chat input[type="checkbox"] {
+  margin-right: 0.5em;
+  accent-color: var(--color-accent);
 }
 
 /* Typing indicator animation */

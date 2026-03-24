@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api } from '../lib/api'
 import { WebSocketManager } from '../lib/websocket'
 import type { ChatSession, ChatMessage, WebSocketMessage } from '../lib/types'
@@ -363,7 +364,9 @@ export default function ChatPage() {
                     >
                       {msg.role === 'assistant' ? (
                         <div className="prose-chat">
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {msg.content}
+                          </ReactMarkdown>
                         </div>
                       ) : (
                         <span className="whitespace-pre-wrap">{msg.content}</span>
