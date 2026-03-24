@@ -8,7 +8,7 @@ import pytest
 from knowledge_core.domain.entity import Entity
 from knowledge_core.ports.database_repository_port import DatabaseRepositoryPort
 from knowledge_core.ports.llm_port import LLMPort
-from knowledge_workers.llm.chat_agent import MAX_TOOL_ROUNDS, ChatAgent
+from knowledge_workers.llm.chat_agent import MAX_TOOL_ROUNDS, SYSTEM_PROMPT, ChatAgent
 
 # -- Fixtures ---------------------------------------------------------------
 
@@ -307,3 +307,42 @@ class TestAggregateDataTool:
             operation="count",
             group_by=None,
         )
+
+
+class TestSystemPrompt:
+    def test_instructs_to_call_describe_tables_first(self):
+        assert "describe_tables" in SYSTEM_PROMPT
+        assert "ALWAYS call describe_tables first" in SYSTEM_PROMPT
+
+    def test_documents_query_data_usage(self):
+        assert "query_data" in SYSTEM_PROMPT
+        assert "sort_by" in SYSTEM_PROMPT
+
+    def test_documents_aggregate_data_usage(self):
+        assert "aggregate_data" in SYSTEM_PROMPT
+        assert "avg" in SYSTEM_PROMPT
+        assert "count" in SYSTEM_PROMPT
+
+    def test_documents_search_entities_usage(self):
+        assert "search_entities" in SYSTEM_PROMPT
+        assert "full-text search" in SYSTEM_PROMPT
+
+    def test_documents_filter_syntax(self):
+        assert '"operator"' in SYSTEM_PROMPT
+        assert '"property"' in SYSTEM_PROMPT
+
+    def test_prompt_is_injected_into_messages(self, agent, mock_llm):
+        """Verify the system prompt is the first message sent to the LLM."""
+        mock_llm.complete_with_tools.return_value = {
+            "role": "assistant",
+            "content": "Hello!",
+        }
+
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(agent.process_message("Hi", []))
+
+        call_args = mock_llm.complete_with_tools.call_args
+        messages = call_args.kwargs["messages"]
+        assert messages[0]["role"] == "system"
+        assert messages[0]["content"] == SYSTEM_PROMPT

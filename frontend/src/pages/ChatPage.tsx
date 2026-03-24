@@ -40,6 +40,12 @@ export default function ChatPage() {
       }
       // Refresh sessions list to include new session
       api.listSessions().then(setSessions).catch(console.error)
+    } else if (data.type === 'title_updated' && data.session_id && data.title) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === data.session_id ? { ...s, title: data.title! } : s,
+        ),
+      )
     } else if (data.type === 'message' && data.content) {
       setMessages((prev) => [
         ...prev,

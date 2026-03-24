@@ -50,8 +50,9 @@ export interface EntitySearchResult {
 }
 
 export interface WebSocketMessage {
-  type: 'session' | 'message'
+  type: 'session' | 'message' | 'title_updated'
   session_id?: string
+  title?: string
   history?: Array<{ role: string; content: string; created_at: string }>
   role?: string
   content?: string
