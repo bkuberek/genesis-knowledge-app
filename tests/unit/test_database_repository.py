@@ -18,7 +18,10 @@ from knowledge_core.domain.entity import Entity
 from knowledge_core.domain.relationship import Relationship
 from knowledge_workers.adapters.database_repository import (
     DatabaseRepository,
+    _collect_sample_value,
+    _describe_property,
     _is_numeric_string,
+    _update_numeric_range,
 )
 from knowledge_workers.adapters.models.chat_message_model import (
     ChatMessageModel,
@@ -421,8 +424,8 @@ class TestFilterConditions:
         compiled = str(conditions[0])
         assert "FLOAT" in compiled.upper()
 
-    def test_non_numeric_string_stays_as_string_cast(self):
-        """Non-numeric strings like 'fintech' should use String cast."""
+    def test_non_numeric_string_equality_uses_lower(self):
+        """String equality comparisons should apply lower() for case-insensitivity."""
         repo = DatabaseRepository(session_factory=_make_session_factory())
         filters = [
             {
@@ -434,11 +437,79 @@ class TestFilterConditions:
         conditions = repo._build_filter_conditions(filters)
         assert len(conditions) == 1
         compiled = str(conditions[0])
-        assert "VARCHAR" in compiled.upper() or "TEXT" in compiled.upper()
+        assert "lower" in compiled.lower()
         assert "FLOAT" not in compiled.upper()
 
-    def test_mixed_alphanumeric_stays_as_string(self):
-        """Mixed alphanumeric like 'abc123' should not be treated as numeric."""
+    def test_string_inequality_uses_lower(self):
+        """String != comparisons should also apply lower() for case-insensitivity."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "industry_vertical",
+                "operator": "!=",
+                "value": "Fintech",
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "lower" in compiled.lower()
+
+    def test_string_equality_lowercases_compare_value(self):
+        """The compare value should be lowered for case-insensitive matching."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters_upper = [
+            {
+                "property": "industry_vertical",
+                "operator": "=",
+                "value": "FINTECH",
+            }
+        ]
+        filters_mixed = [
+            {
+                "property": "industry_vertical",
+                "operator": "=",
+                "value": "Fintech",
+            }
+        ]
+        cond_upper = repo._build_filter_conditions(filters_upper)
+        cond_mixed = repo._build_filter_conditions(filters_mixed)
+        # Both should produce identical SQL since lower() is applied to both sides
+        assert str(cond_upper[0]) == str(cond_mixed[0])
+
+    def test_numeric_greater_than_does_not_use_lower(self):
+        """Numeric comparisons should not use lower()."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "founding_year",
+                "operator": ">",
+                "value": 2020,
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "lower" not in compiled.lower()
+        assert "FLOAT" in compiled.upper()
+
+    def test_string_greater_than_does_not_use_lower(self):
+        """String > comparisons should not use lower() (lexicographic compare)."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "name",
+                "operator": ">",
+                "value": "M",
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "lower" not in compiled.lower()
+
+    def test_mixed_alphanumeric_equality_uses_lower(self):
+        """Mixed alphanumeric like 'abc123' should use lower() for = operator."""
         repo = DatabaseRepository(session_factory=_make_session_factory())
         filters = [
             {
@@ -451,6 +522,7 @@ class TestFilterConditions:
         assert len(conditions) == 1
         compiled = str(conditions[0])
         assert "FLOAT" not in compiled.upper()
+        assert "lower" in compiled.lower()
 
 
 class TestIsNumericString:
@@ -471,3 +543,63 @@ class TestIsNumericString:
 
     def test_empty_string(self):
         assert _is_numeric_string("") is False
+
+
+class TestDescribeProperty:
+    def test_describes_float_with_range(self):
+        result = _describe_property(3.14)
+        assert result == {"type": "float", "min": 3.14, "max": 3.14}
+
+    def test_describes_int_with_range(self):
+        result = _describe_property(2020)
+        assert result == {"type": "int", "min": 2020, "max": 2020}
+
+    def test_describes_string_with_samples(self):
+        result = _describe_property("Fintech")
+        assert result == {"type": "str", "samples": ["Fintech"]}
+
+    def test_describes_other_types(self):
+        result = _describe_property(True)
+        assert result["type"] == "bool"
+
+
+class TestUpdateNumericRange:
+    def test_widens_min(self):
+        descriptor = {"type": "int", "min": 10, "max": 100}
+        _update_numeric_range(descriptor, 5)
+        assert descriptor["min"] == 5
+        assert descriptor["max"] == 100
+
+    def test_widens_max(self):
+        descriptor = {"type": "float", "min": 1.0, "max": 10.0}
+        _update_numeric_range(descriptor, 15.5)
+        assert descriptor["min"] == 1.0
+        assert descriptor["max"] == 15.5
+
+    def test_no_change_when_within_range(self):
+        descriptor = {"type": "int", "min": 0, "max": 100}
+        _update_numeric_range(descriptor, 50)
+        assert descriptor == {"type": "int", "min": 0, "max": 100}
+
+
+class TestCollectSampleValue:
+    def test_adds_new_distinct_value(self):
+        descriptor = {"type": "str", "samples": ["Fintech"]}
+        _collect_sample_value(descriptor, "Healthcare")
+        assert descriptor["samples"] == ["Fintech", "Healthcare"]
+
+    def test_skips_duplicate_value(self):
+        descriptor = {"type": "str", "samples": ["Fintech"]}
+        _collect_sample_value(descriptor, "Fintech")
+        assert descriptor["samples"] == ["Fintech"]
+
+    def test_caps_at_max_sample_values(self):
+        descriptor = {"type": "str", "samples": [f"val_{i}" for i in range(10)]}
+        _collect_sample_value(descriptor, "new_value")
+        assert len(descriptor["samples"]) == 10
+        assert "new_value" not in descriptor["samples"]
+
+    def test_ignores_descriptor_without_samples(self):
+        descriptor = {"type": "int", "min": 0, "max": 100}
+        _collect_sample_value(descriptor, "test")
+        assert "samples" not in descriptor

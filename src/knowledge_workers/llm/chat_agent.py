@@ -1,12 +1,15 @@
 """Chat agent with tool-calling loop — no LangChain."""
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from knowledge_core.ports.database_repository_port import DatabaseRepositoryPort
 from knowledge_core.ports.llm_port import LLMPort
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 5
 
@@ -34,6 +37,9 @@ property keys/types.
 
 ### describe_tables
 Call FIRST in every conversation to learn available entity types and properties.
+Returns property types, sample values for strings, and min/max ranges for numbers.
+Use EXACT sample values (matching case) in filters — string comparisons are \
+case-insensitive, but using exact values is best practice.
 
 ### query_data
 Use for listing, filtering, or ranking entities.
@@ -134,13 +140,19 @@ class ChatAgent:
         raw_args = tool_call["function"]["arguments"]
         args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
 
+        logger.info("Tool call: %s(%s)", name, json.dumps(args, default=_json_default))
+
         handler = self._tool_map().get(name)
         if handler is None:
+            logger.warning("Unknown tool requested: %s", name)
             return {"error": f"Unknown tool: {name}"}
 
         try:
-            return await handler(args)
+            result = await handler(args)
+            logger.info("Tool result: %.200s", json.dumps(result, default=_json_default))
+            return result
         except Exception as exc:
+            logger.exception("Tool execution error in %s: %s", name, exc)
             return {"error": str(exc)}
 
     def _tool_map(self) -> dict[str, Any]:

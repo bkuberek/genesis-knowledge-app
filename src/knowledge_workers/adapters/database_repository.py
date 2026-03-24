@@ -36,6 +36,8 @@ from knowledge_workers.adapters.models.relationship_model import (
 ALLOWED_FILTER_OPERATORS = frozenset({"=", "!=", ">", "<", ">=", "<=", "contains", "like"})
 ALLOWED_AGGREGATE_OPERATIONS = frozenset({"count", "avg", "sum", "min", "max"})
 
+MAX_SAMPLE_VALUES = 10
+
 
 def _is_numeric_string(value: str) -> bool:
     """Check if a string represents a numeric value."""
@@ -44,6 +46,38 @@ def _is_numeric_string(value: str) -> bool:
         return True
     except (ValueError, TypeError):
         return False
+
+
+def _describe_property(value: Any) -> dict[str, Any]:
+    """Build an initial property descriptor from a sample value."""
+    if isinstance(value, bool):
+        return {"type": "bool"}
+    if isinstance(value, float):
+        return {"type": "float", "min": value, "max": value}
+    if isinstance(value, int):
+        return {"type": "int", "min": value, "max": value}
+    if isinstance(value, str):
+        return {"type": "str", "samples": [value]}
+    return {"type": type(value).__name__}
+
+
+def _update_numeric_range(descriptor: dict[str, Any], value: int | float) -> None:
+    """Widen the min/max range of a numeric property descriptor."""
+    if "min" in descriptor:
+        descriptor["min"] = min(descriptor["min"], value)
+    if "max" in descriptor:
+        descriptor["max"] = max(descriptor["max"], value)
+
+
+def _collect_sample_value(descriptor: dict[str, Any], value: str) -> None:
+    """Add a distinct sample value to a string property descriptor (up to MAX_SAMPLE_VALUES)."""
+    samples = descriptor.get("samples")
+    if samples is None:
+        return
+    if len(samples) >= MAX_SAMPLE_VALUES:
+        return
+    if value not in samples:
+        samples.append(value)
 
 
 class DatabaseRepository(DatabaseRepositoryPort):
@@ -413,15 +447,19 @@ class DatabaseRepository(DatabaseRepositoryPort):
 
             for entity_type in types:
                 prop_stmt = (
-                    select(EntityModel.properties).where(EntityModel.type == entity_type).limit(10)
+                    select(EntityModel.properties).where(EntityModel.type == entity_type).limit(50)
                 )
                 prop_result = await session.execute(prop_stmt)
-                props: dict[str, str] = {}
+                props: dict[str, Any] = {}
                 for row in prop_result.scalars().all():
                     if row:
                         for key, value in row.items():
                             if key not in props:
-                                props[key] = type(value).__name__
+                                props[key] = _describe_property(value)
+                            elif isinstance(value, (int, float)):
+                                _update_numeric_range(props[key], value)
+                            elif isinstance(value, str) and key in props:
+                                _collect_sample_value(props[key], value)
                 types[entity_type]["properties"] = props
 
             return types
@@ -473,9 +511,18 @@ class DatabaseRepository(DatabaseRepositoryPort):
                 is_numeric = isinstance(value, (int, float)) or (
                     isinstance(value, str) and _is_numeric_string(value)
                 )
-                column_expr = cast(json_text, Float) if is_numeric else cast(json_text, String)
-                compare_value = float(value) if is_numeric else str(value)
-                condition = _comparison(column_expr, operator, compare_value)
+                if is_numeric:
+                    column_expr = cast(json_text, Float)
+                    compare_value = float(value)
+                    condition = _comparison(column_expr, operator, compare_value)
+                elif operator in {"=", "!="}:
+                    column_expr = func.lower(cast(json_text, String))
+                    compare_value = str(value).lower()
+                    condition = _comparison(column_expr, operator, compare_value)
+                else:
+                    column_expr = cast(json_text, String)
+                    compare_value = str(value)
+                    condition = _comparison(column_expr, operator, compare_value)
             elif operator == "contains":
                 condition = json_text.contains(str(value))
             elif operator == "like":
