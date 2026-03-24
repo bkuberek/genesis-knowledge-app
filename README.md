@@ -38,7 +38,8 @@ Login with `test@knowledge.local` / `test123`. Full setup: [docs/getting-started
 
 ## What We'd Improve With More Time
 
-- **Document sharing between users** -- Currently documents are user-scoped via Row-Level Security. Sharing would enable collaborative knowledge bases where teams pool documents and query across them.
-- **Graph database backend** -- Entities and relationships live in PostgreSQL with JSONB. A dedicated graph database (Neo4j, or Apache AGE as a Postgres extension) would enable richer traversal queries that are awkward with relational joins.
-- **Smarter ingestion pipeline** -- More document formats, chunked processing for large files, and an LLM enrichment pass after direct parsing to infer relationships between entities.
-- **Real-time collaboration** -- WebSocket-based live updates when another user uploads a document or adds knowledge that affects shared entities.
+- **Large dataset performance** -- Tested against a 500-row sample CSV; larger datasets (10K+ rows) expose bottlenecks in one-entity-per-row transactions and sequential scans on unindexed JSONB filters. Fixing this means batch inserts, GIN indexes on filtered JSONB paths, pagination, and materialized views for common aggregations.
+- **Document sharing** -- Documents are user-scoped via Row-Level Security. Sharing would enable collaborative knowledge bases where teams query across pooled documents.
+- **Graph database backend** -- A dedicated graph database (Neo4j or Apache AGE) would enable richer traversal queries awkward with relational JSONB joins.
+- **Smarter ingestion** -- More document formats, chunked processing for large files, and LLM enrichment after direct parsing to infer entity relationships.
+- **Real-time collaboration** -- WebSocket-based live updates when another user uploads or adds knowledge affecting shared entities.
