@@ -37,6 +37,15 @@ ALLOWED_FILTER_OPERATORS = frozenset({"=", "!=", ">", "<", ">=", "<=", "contains
 ALLOWED_AGGREGATE_OPERATIONS = frozenset({"count", "avg", "sum", "min", "max"})
 
 
+def _is_numeric_string(value: str) -> bool:
+    """Check if a string represents a numeric value."""
+    try:
+        float(value)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 class DatabaseRepository(DatabaseRepositoryPort):
     """PostgreSQL repository using SQLAlchemy async sessions."""
 
@@ -461,7 +470,9 @@ class DatabaseRepository(DatabaseRepositoryPort):
             json_text = EntityModel.properties[prop].astext
 
             if operator in {"=", "!=", ">", "<", ">=", "<="}:
-                is_numeric = isinstance(value, (int, float))
+                is_numeric = isinstance(value, (int, float)) or (
+                    isinstance(value, str) and _is_numeric_string(value)
+                )
                 column_expr = cast(json_text, Float) if is_numeric else cast(json_text, String)
                 compare_value = float(value) if is_numeric else str(value)
                 condition = _comparison(column_expr, operator, compare_value)

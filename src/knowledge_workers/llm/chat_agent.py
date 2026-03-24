@@ -253,7 +253,10 @@ class ChatAgent:
                                             ],
                                         },
                                         "value": {
-                                            "description": ("Value to compare against"),
+                                            "description": (
+                                                "Value to compare against. Use numbers "
+                                                "(not strings) for numeric comparisons."
+                                            ),
                                         },
                                     },
                                     "required": [
@@ -343,7 +346,10 @@ class ChatAgent:
                                             ],
                                         },
                                         "value": {
-                                            "description": "Value to compare against",
+                                            "description": (
+                                                "Value to compare against. Use numbers "
+                                                "(not strings) for numeric comparisons."
+                                            ),
                                         },
                                     },
                                     "required": [

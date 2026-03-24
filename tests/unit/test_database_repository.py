@@ -18,6 +18,7 @@ from knowledge_core.domain.entity import Entity
 from knowledge_core.domain.relationship import Relationship
 from knowledge_workers.adapters.database_repository import (
     DatabaseRepository,
+    _is_numeric_string,
 )
 from knowledge_workers.adapters.models.chat_message_model import (
     ChatMessageModel,
@@ -389,3 +390,84 @@ class TestFilterConditions:
         ]
         conditions = repo._build_filter_conditions(filters)
         assert len(conditions) == 1
+
+    def test_string_numeric_value_produces_float_cast(self):
+        """LLM may send '2020' instead of 2020 — should still use Float cast."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "founding_year",
+                "operator": ">",
+                "value": "2020",
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "FLOAT" in compiled.upper()
+
+    def test_float_string_value_produces_float_cast(self):
+        """Decimal strings like '3.14' should also use Float cast."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "growth_rate",
+                "operator": ">=",
+                "value": "3.14",
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "FLOAT" in compiled.upper()
+
+    def test_non_numeric_string_stays_as_string_cast(self):
+        """Non-numeric strings like 'fintech' should use String cast."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "industry_vertical",
+                "operator": "=",
+                "value": "fintech",
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "VARCHAR" in compiled.upper() or "TEXT" in compiled.upper()
+        assert "FLOAT" not in compiled.upper()
+
+    def test_mixed_alphanumeric_stays_as_string(self):
+        """Mixed alphanumeric like 'abc123' should not be treated as numeric."""
+        repo = DatabaseRepository(session_factory=_make_session_factory())
+        filters = [
+            {
+                "property": "code",
+                "operator": "=",
+                "value": "abc123",
+            }
+        ]
+        conditions = repo._build_filter_conditions(filters)
+        assert len(conditions) == 1
+        compiled = str(conditions[0])
+        assert "FLOAT" not in compiled.upper()
+
+
+class TestIsNumericString:
+    def test_integer_string(self):
+        assert _is_numeric_string("2020") is True
+
+    def test_float_string(self):
+        assert _is_numeric_string("3.14") is True
+
+    def test_negative_string(self):
+        assert _is_numeric_string("-42") is True
+
+    def test_non_numeric(self):
+        assert _is_numeric_string("fintech") is False
+
+    def test_mixed_alphanumeric(self):
+        assert _is_numeric_string("abc123") is False
+
+    def test_empty_string(self):
+        assert _is_numeric_string("") is False
