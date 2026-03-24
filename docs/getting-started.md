@@ -222,7 +222,7 @@ The API exposes these route groups:
 | `/api/documents` | Upload, list, and manage documents |
 | `/api/graph` | Query entities, relationships, and properties |
 | `/api/chat` | Chat sessions and message history |
-| `/ws/chat/{session_id}` | WebSocket endpoint for real-time chat |
+| `/ws/chat` | WebSocket endpoint for real-time chat (session_id passed as optional query parameter) |
 | `/mcp` | MCP (Model Context Protocol) tool server |
 | `/health` | Health check endpoint |
 
@@ -433,6 +433,20 @@ If it keeps failing, increase the health check timing in `docker-compose.yml`:
 start_period: 120s  # increase from 60s
 ```
 
+### Keycloak port 9000 conflict
+
+**Symptom:** Keycloak health check fails, or another service on your machine conflicts with port 9000.
+
+**Explanation:** Keycloak 26 uses port **9000** for its management interface and health checks (`/health/ready`), separate from the main HTTP port 8080. This is _not_ configurable via the standard `KC_HTTP_PORT` setting. The `docker-compose.yml` health check targets port 9000 internally — this port is not published to the host, so it won't conflict with host services. However, if you see health check failures, check that no Docker network policy is blocking internal port 9000.
+
+```bash
+# Verify Keycloak health inside the container
+docker compose exec keycloak curl -sf http://localhost:9000/health/ready
+# Expected: {"status":"UP","checks":[...]}
+```
+
+> **Note:** The management port (9000) is only used internally for health checks. Users and the application connect to Keycloak on port 8080.
+
 ### LLM errors during document processing or chat
 
 **Symptom:** Documents stuck in "processing" or chat returns errors.
@@ -496,7 +510,7 @@ proxy: {
 **Fix:** WebSocket authentication uses a `token` query parameter (browsers can't set custom headers on WebSocket upgrade). Ensure the frontend is passing the JWT token in the WebSocket URL:
 
 ```
-ws://localhost:8000/ws/chat/{session_id}?token={jwt_token}
+ws://localhost:8000/ws/chat?token={jwt_token}&session_id={optional_session_id}
 ```
 
 ### "Module not found" errors
