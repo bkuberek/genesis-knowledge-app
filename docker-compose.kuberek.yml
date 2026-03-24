@@ -1,0 +1,134 @@
+# ============================================================================
+# Genesis Knowledge App - Docker Compose for Coolify on kuberek.org
+# ============================================================================
+# Deployed via Coolify git integration.
+#
+# Infrastructure:
+# - PostgreSQL: uses shared-postgres:5432 on the kuberek.org homelab
+# - Keycloak: own instance, backed by shared-postgres (knowledge_keycloak DB)
+# - Connects to coolify network to reach shared services
+# - Coolify handles reverse proxy (Traefik) and SSL termination
+# - SSL terminated at Cloudflare tunnel, Traefik uses HTTP entrypoints
+#
+# Pre-deployment steps:
+# 1. Create `knowledge_db` database and user on shared-postgres:
+#      CREATE USER knowledge WITH PASSWORD '<password>';
+#      CREATE DATABASE knowledge_db OWNER knowledge;
+# 2. Create `knowledge_keycloak` database on shared-postgres:
+#      CREATE DATABASE knowledge_keycloak OWNER knowledge;
+# 3. Set environment variables in Coolify:
+#      DB_PASSWORD, KC_DB_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
+#      KC_CLIENT_SECRET, LLM_API_KEY
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # Keycloak (Identity Provider)
+  # ==========================================================================
+  knowledge_keycloak:
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
+    image: knowledge-keycloak:latest
+    container_name: knowledge_keycloak
+    command: start --import-realm --hostname-strict=false
+    restart: unless-stopped
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://${KC_DB_HOST:-shared-postgres}:${KC_DB_PORT:-5432}/${KC_DB_NAME:-knowledge_keycloak}
+      - KC_DB_USERNAME=${KC_DB_USERNAME:-knowledge}
+      - KC_DB_PASSWORD=${KC_DB_PASSWORD}
+      - KC_HOSTNAME=${KC_HOSTNAME:-auth.genesis-knowledge-demo.kuberek.org}
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HTTP_ENABLED=true
+      - KC_HEALTH_ENABLED=true
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.knowledge-keycloak.rule=Host(`${KC_HOSTNAME:-auth.genesis-knowledge-demo.kuberek.org}`)"
+      - "traefik.http.routers.knowledge-keycloak.entryPoints=http"
+      - "traefik.http.services.knowledge-keycloak.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ==========================================================================
+  # Knowledge App (FastAPI + React SPA)
+  # ==========================================================================
+  knowledge_app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-https://auth.genesis-knowledge-demo.kuberek.org}
+    image: knowledge-app:latest
+    container_name: knowledge_app
+    restart: unless-stopped
+    depends_on:
+      knowledge_keycloak:
+        condition: service_healthy
+    environment:
+      - ENV_FOR_DYNACONF=production
+      - KNOWLEDGE_DATABASE__HOST=${DB_HOST:-shared-postgres}
+      - KNOWLEDGE_DATABASE__PORT=${DB_PORT:-5432}
+      - KNOWLEDGE_DATABASE__NAME=${DB_NAME:-knowledge_db}
+      - KNOWLEDGE_DATABASE__USER=${DB_USERNAME:-knowledge}
+      - KNOWLEDGE_DATABASE__PASSWORD=${DB_PASSWORD}
+      - KNOWLEDGE_KEYCLOAK__SERVER_URL=${KEYCLOAK_SERVER_URL:-https://auth.genesis-knowledge-demo.kuberek.org}
+      - KNOWLEDGE_KEYCLOAK__REALM=knowledge
+      - KNOWLEDGE_KEYCLOAK__CLIENT_ID=knowledge-app
+      - KNOWLEDGE_KEYCLOAK__CLIENT_SECRET=${KC_CLIENT_SECRET:-knowledge-app-secret}
+      - KNOWLEDGE_LLM__API_URL=${LLM_API_URL:-https://litellm-production-f079.up.railway.app}
+      - KNOWLEDGE_LLM__API_KEY=${LLM_API_KEY}
+      - KNOWLEDGE_CORS_ORIGINS=${CORS_ORIGINS:-https://genesis-knowledge-demo.kuberek.org}
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.knowledge-app.rule=Host(`${APP_HOSTNAME:-genesis-knowledge-demo.kuberek.org}`)"
+      - "traefik.http.routers.knowledge-app.entryPoints=http"
+      - "traefik.http.services.knowledge-app.loadbalancer.server.port=8000"
+    volumes:
+      - knowledge_documents:/app/data/documents
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  coolify:
+    external: true
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  knowledge_documents:

@@ -9,13 +9,18 @@ from fastapi.staticfiles import StaticFiles
 
 from knowledge_api.dependencies.auth import set_auth_adapter
 from knowledge_api.dependencies.container import container
+from knowledge_core.config import settings
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:8000",
-]
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://localhost:8000"
+
+
+def _get_allowed_origins() -> list[str]:
+    """Return CORS origins from settings, falling back to development defaults."""
+    raw = getattr(settings, "cors_origins", "") or DEFAULT_CORS_ORIGINS
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
 
 MCP_TOOL_OPERATIONS = [
     "search_knowledge",
@@ -43,9 +48,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    allowed_origins = _get_allowed_origins()
+    logger.info("CORS allowed origins: %s", allowed_origins)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

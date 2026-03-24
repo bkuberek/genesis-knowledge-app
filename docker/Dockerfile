@@ -1,10 +1,13 @@
 # Stage 1: Build frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
+
+ARG VITE_KEYCLOAK_URL=http://localhost:8080
+
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+RUN VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL npm run build
 
 # Stage 2: Install Python dependencies
 FROM python:3.12-slim AS python-builder

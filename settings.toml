@@ -3,6 +3,9 @@
 app_name = "Knowledge"
 debug = false
 
+# CORS
+cors_origins = "http://localhost:5173,http://localhost:8000"
+
 # Database
 database.host = "localhost"
 database.port = 5432
@@ -31,3 +34,4 @@ debug = true
 
 [production]
 debug = false
+cors_origins = "https://genesis-knowledge-demo.kuberek.org"
