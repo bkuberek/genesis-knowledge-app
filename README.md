@@ -1,6 +1,6 @@
 # Knowledge App
 
-![CI](https://github.com/bkuberek/genesis-knowledge-app/actions/workflows/ci.yml/badge.svg) ![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg) ![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
+![Version](https://img.shields.io/badge/version-1.4.0-blue) ![CI](https://github.com/bkuberek/genesis-knowledge-app/actions/workflows/ci.yml/badge.svg) ![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg) ![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 
 Multi-user knowledge management with LLM-powered entity extraction and conversational queries. Upload documents, extract structured entities and relationships, then ask natural-language questions against your knowledge base.
 
