@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM",
+      "options": {
+        "baseURL": "https://litellm-production-f079.up.railway.app/v1",
+        "apiKey": "env:LITE_LLM_PROXY_API_KEY"
+      },
+      "models": {
+        "opus-4.6": {
+          "name": "Claude Opus 4.6 (1M)",
+          "id": "global.anthropic.claude-opus-4-6-v1",
+          "attachment": true,
+          "context": 1000000,
+          "max_tokens": 128000
+        },
+        "sonnet-4.6": {
+          "name": "Claude Sonnet 4.6",
+          "id": "anthropic.claude-sonnet-4-6",
+          "attachment": true,
+          "context": 200000,
+          "max_tokens": 64000
+        },
+        "haiku-4.5": {
+          "name": "Claude Haiku 4.5",
+          "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "attachment": true,
+          "context": 200000,
+          "max_tokens": 64000
+        }
+      }
+    }
+  },
+  "model": "litellm/opus-4.6",
+  "small_model": "litellm/sonnet-4.6"
+}
