@@ -1,12 +1,24 @@
 """Chat agent with tool-calling loop — no LangChain."""
 
 import json
+from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from knowledge_core.ports.database_repository_port import DatabaseRepositoryPort
 from knowledge_core.ports.llm_port import LLMPort
 
 MAX_TOOL_ROUNDS = 5
+
+
+def _json_default(obj: object) -> str:
+    """Handle non-serializable types from database results (UUIDs, datetimes)."""
+    if isinstance(obj, UUID):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
 
 SYSTEM_PROMPT = """\
 You are a knowledge assistant that queries a structured entity database.
@@ -98,7 +110,7 @@ class ChatAgent:
                     {
                         "role": "tool",
                         "tool_call_id": tool_call["id"],
-                        "content": json.dumps(result),
+                        "content": json.dumps(result, default=_json_default),
                     }
                 )
 

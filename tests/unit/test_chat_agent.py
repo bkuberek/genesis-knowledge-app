@@ -1,6 +1,8 @@
 """Unit tests for the ChatAgent tool-calling loop."""
 
 import json
+import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,7 +10,12 @@ import pytest
 from knowledge_core.domain.entity import Entity
 from knowledge_core.ports.database_repository_port import DatabaseRepositoryPort
 from knowledge_core.ports.llm_port import LLMPort
-from knowledge_workers.llm.chat_agent import MAX_TOOL_ROUNDS, SYSTEM_PROMPT, ChatAgent
+from knowledge_workers.llm.chat_agent import (
+    MAX_TOOL_ROUNDS,
+    SYSTEM_PROMPT,
+    ChatAgent,
+    _json_default,
+)
 
 # -- Fixtures ---------------------------------------------------------------
 
@@ -346,3 +353,87 @@ class TestSystemPrompt:
         messages = call_args.kwargs["messages"]
         assert messages[0]["role"] == "system"
         assert messages[0]["content"] == SYSTEM_PROMPT
+
+
+class TestJsonDefault:
+    def test_serializes_uuid_to_string(self):
+        test_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        assert _json_default(test_uuid) == "12345678-1234-5678-1234-567812345678"
+
+    def test_serializes_datetime_to_isoformat(self):
+        test_dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+        assert _json_default(test_dt) == "2024-01-15T10:30:00+00:00"
+
+    def test_raises_type_error_for_unknown_types(self):
+        with pytest.raises(TypeError, match="set"):
+            _json_default({1, 2, 3})
+
+    def test_json_dumps_with_uuid_and_datetime(self):
+        """Verify json.dumps works end-to-end with the custom default handler."""
+        data = {
+            "id": uuid.UUID("abcdef01-2345-6789-abcd-ef0123456789"),
+            "created_at": datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC),
+            "name": "Test Entity",
+        }
+        result = json.dumps(data, default=_json_default)
+        parsed = json.loads(result)
+        assert parsed["id"] == "abcdef01-2345-6789-abcd-ef0123456789"
+        assert parsed["created_at"] == "2024-06-01T12:00:00+00:00"
+        assert parsed["name"] == "Test Entity"
+
+
+class TestToolResultSerialization:
+    @pytest.mark.asyncio
+    async def test_query_data_result_serializes_with_uuid_and_datetime(
+        self, agent, mock_llm, mock_repository
+    ):
+        """Regression test: tool results with UUIDs/datetimes must serialize without error."""
+        entity = Entity(
+            id=uuid.UUID("aabbccdd-1122-3344-5566-778899aabbcc"),
+            name="Acme Corp",
+            canonical_name="acme_corp",
+            type="company",
+            properties={"industry": "tech"},
+            created_at=datetime(2024, 3, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 3, 15, tzinfo=UTC),
+        )
+        mock_repository.query_entities.return_value = [entity]
+
+        tool_call_response = {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_q",
+                    "type": "function",
+                    "function": {
+                        "name": "query_data",
+                        "arguments": json.dumps(
+                            {
+                                "entity_type": "company",
+                                "limit": 10,
+                            }
+                        ),
+                    },
+                },
+            ],
+        }
+        text_response = {
+            "role": "assistant",
+            "content": "Found Acme Corp.",
+        }
+        mock_llm.complete_with_tools.side_effect = [
+            tool_call_response,
+            text_response,
+        ]
+
+        result = await agent.process_message("Show companies", [])
+        assert result == "Found Acme Corp."
+
+        # Verify the tool result was passed back as valid JSON with serialized UUID
+        second_call_messages = mock_llm.complete_with_tools.call_args_list[1].kwargs["messages"]
+        tool_message = second_call_messages[-1]
+        assert tool_message["role"] == "tool"
+        parsed_content = json.loads(tool_message["content"])
+        assert parsed_content["results"][0]["id"] == "aabbccdd-1122-3344-5566-778899aabbcc"
+        assert parsed_content["results"][0]["created_at"].startswith("2024-03-01")
