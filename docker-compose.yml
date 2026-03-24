@@ -19,7 +19,9 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
     command: start-dev --import-realm
     environment:
       KC_DB: postgres
@@ -27,21 +29,19 @@ services:
       KC_DB_USERNAME: knowledge
       KC_DB_PASSWORD: knowledge
       KC_HEALTH_ENABLED: "true"
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports:
       - "8080:8080"
-    volumes:
-      - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 60s
+      start_period: 30s
     restart: unless-stopped
 
   app:
@@ -54,7 +54,7 @@ services:
     environment:
       ENV_FOR_DYNACONF: production
       KNOWLEDGE_DATABASE__HOST: postgres
-      KNOWLEDGE_DATABASE__PORT: 5432
+      KNOWLEDGE_DATABASE__PORT: "5432"
       KNOWLEDGE_DATABASE__NAME: knowledge_db
       KNOWLEDGE_DATABASE__USER: knowledge
       KNOWLEDGE_DATABASE__PASSWORD: knowledge
@@ -62,8 +62,8 @@ services:
       KNOWLEDGE_KEYCLOAK__REALM: knowledge
       KNOWLEDGE_KEYCLOAK__CLIENT_ID: knowledge-app
       KNOWLEDGE_KEYCLOAK__CLIENT_SECRET: knowledge-app-secret
-      KNOWLEDGE_LLM__API_URL: ${KNOWLEDGE_LLM__API_URL:-https://litellm-production-f079.up.railway.app}
-      KNOWLEDGE_LLM__API_KEY: ${KNOWLEDGE_LLM__API_KEY:-}
+      KNOWLEDGE_LLM__API_URL: ${KNOWLEDGE_LLM__API_URL:-${LITE_LLM_PROXY_API_URL:-https://litellm-production-f079.up.railway.app}}
+      KNOWLEDGE_LLM__API_KEY: ${KNOWLEDGE_LLM__API_KEY:-${LITE_LLM_PROXY_API_KEY:-}}
     ports:
       - "8000:8000"
     volumes:
