@@ -8,34 +8,71 @@
   "roles": {
     "realm": [
       {
+        "name": "default-roles-knowledge",
+        "description": "Composite role for default realm roles",
+        "composite": true,
+        "composites": {
+          "realm": ["user"]
+        }
+      },
+      {
         "name": "user",
         "description": "Default user role"
+      },
+      {
+        "name": "admin",
+        "description": "Administrator role"
       }
     ]
   },
-  "defaultRoles": ["user"],
+  "defaultRole": {
+    "name": "default-roles-knowledge",
+    "description": "Composite role for default realm roles",
+    "composite": true,
+    "composites": {
+      "realm": ["user"]
+    }
+  },
   "clients": [
     {
       "clientId": "knowledge-app",
       "name": "Knowledge Backend",
+      "description": "Confidential client for the backend API",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
       "secret": "knowledge-app-secret",
+      "consentRequired": false,
       "standardFlowEnabled": true,
-      "serviceAccountsEnabled": true,
+      "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["http://localhost:8000/*"],
-      "webOrigins": ["http://localhost:8000"]
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "redirectUris": [
+        "http://localhost:8000/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8000",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "access.token.lifespan": "300",
+        "client.session.idle.timeout": "1800"
+      }
     },
     {
       "clientId": "knowledge-web",
       "name": "Knowledge Frontend",
+      "description": "Public PKCE client for the SPA frontend",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,
+      "consentRequired": false,
       "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:5173/*",
         "http://localhost:8000/*"
@@ -45,7 +82,9 @@
         "http://localhost:8000"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "access.token.lifespan": "300",
+        "client.session.idle.timeout": "1800"
       }
     }
   ],
@@ -64,7 +103,7 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["user"]
+      "realmRoles": ["default-roles-knowledge", "user"]
     }
   ]
 }
