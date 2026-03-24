@@ -1,22 +1,22 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from alembic import context
 from knowledge_core.config import settings
+from knowledge_workers.adapters.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Build database URL from dynaconf settings
 DATABASE_URL = (
     f"postgresql+asyncpg://{settings.database.user}:{settings.database.password}"
     f"@{settings.database.host}:{settings.database.port}/{settings.database.name}"
 )
 
-target_metadata = None  # Will be set when models are defined
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -33,7 +33,10 @@ def run_migrations_offline() -> None:
 
 def do_run_migrations(connection) -> None:
     """Run migrations with a given connection."""
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
