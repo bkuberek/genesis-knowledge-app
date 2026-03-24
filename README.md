@@ -2,52 +2,43 @@
 
 ![CI](https://github.com/bkuberek/genesis-knowledge-app/actions/workflows/ci.yml/badge.svg) ![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg) ![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 
-Multi-user knowledge management with LLM-powered entity extraction and conversational queries. Upload documents, automatically extract structured entities and relationships, then ask natural-language questions against your knowledge base.
+Multi-user knowledge management with LLM-powered entity extraction and conversational queries. Upload documents, extract structured entities and relationships, then ask natural-language questions against your knowledge base.
 
 ## Quick Start
 
 ```bash
-cp .env.example .env                        # Set KNOWLEDGE_LLM__API_KEY
-docker compose up -d postgres keycloak      # Start infrastructure
+cp .env.example .env                                # Set KNOWLEDGE_LLM__API_KEY
+docker compose up -d postgres keycloak              # Start infrastructure
 uv sync --extra dev && uv run alembic upgrade head  # Install deps + migrate
-uv run knowledge serve --reload             # API at localhost:8000
-cd frontend && npm install && npm run dev   # Frontend at localhost:5173
+uv run knowledge serve --reload                     # API at localhost:8000
+cd frontend && npm install && npm run dev           # Frontend at localhost:5173
 ```
 
-Login with `test@knowledge.local` / `test123`. Full setup guide: [docs/getting-started.md](docs/getting-started.md).
+Login with `test@knowledge.local` / `test123`. Full setup: [docs/getting-started.md](docs/getting-started.md).
 
 **Stack:** Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL 16, Keycloak 26, React 18, TypeScript, Vite, TailwindCSS v4, LiteLLM (Anthropic Claude).
 
-## AI Tools Used and How
-
-Claude (via LiteLLM proxy) powers entity extraction from documents, entity classification, and a conversational chat agent with tool-calling. The chat agent runs a custom tool-calling loop (~250 lines) that searches the knowledge base and composes answers from real data — no LangChain needed.
-
-Built using **Spec-Driven Development (SDD)**: each feature went through explore, propose, spec, design, tasks, apply, verify. AI-assisted code generation with human-in-the-loop orchestration. SDD artifacts preserved in `docs/specs/`.
-
 ## Interesting Challenges
 
-- **PostgreSQL RLS with FORCE semantics** — The app user owns tables, so `FORCE ROW LEVEL SECURITY` is required for policies to apply to the owner.
-- **JSONB property queries with injection prevention** — Operator whitelist with parameterized values for safe dynamic property queries.
-- **Custom tool-calling loop** — ~250 lines replace a heavy framework. The agent iterates tool calls until it has enough data to answer.
-- **Keycloak 26 realm format** — `defaultRole` composite structure replaced the legacy `defaultRoles` array.
-- **dynaconf @format limitations** — Switched to plain defaults with env var overrides.
-- **WebSocket auth via query params** — Browsers can't set headers on WS upgrade; JWT passes as query parameter.
+- **OpenCode + LiteLLM proxy setup** -- Model names on the proxy don't match Anthropic's canonical names (`claude-sonnet-4-5` vs `anthropic/claude-sonnet-4-20250514`), causing 400 errors until we queried `/v1/models` to discover the correct identifiers.
 
-## What I'd Improve With More Time
+- **Chat agent tool-calling reliability** -- The multi-round tool-calling loop surfaced several subtle bugs: LiteLLM expects `function.arguments` as a JSON string but the LLM returns a dict (crashing round two); tool results with UUIDs and datetimes aren't JSON-serializable by default; and JSONB property filters failed silently because the LLM sends numeric values as strings (`"2020"` vs `2020`), bypassing the numeric CAST path.
 
-- **pgvector** for semantic search alongside full-text search
-- **Streaming responses** (SSE) for chat instead of full-message WebSocket
-- **Integration tests** against real PostgreSQL + Keycloak
-- Proper **entity visibility RLS** via entity_documents join (currently simplified)
-- **Document chunking** with overlap for large files
-- **Rate limiting** and request throttling
-- Error notifications for background processing failures
-- **End-to-end Playwright tests** for the frontend
+- **Entity extraction quality** -- Initially the entire 500-row CSV was sent to the LLM with a 4096 max_tokens limit, extracting only ~30-40 entities. The fix: CSVs are already structured data and don't need LLM interpretation. Direct parsing yields 100% accuracy. Case-sensitive string matching (`"fintech"` vs `"Fintech"`) required case-insensitive SQL comparisons.
 
-## Design Decisions Worth Noting
+- **Keycloak 26 in Docker** -- Health checks use port 9000 (management interface), not 8080. Environment variables changed from `KEYCLOAK_ADMIN` to `KC_BOOTSTRAP_ADMIN_USERNAME`. Token issuer mismatch between `localhost:8080` and `keycloak:8080` required a split URL configuration.
 
-- **Hexagonal architecture** — Core domain has zero framework dependencies. FastAPI, SQLAlchemy, LiteLLM are swappable adapters.
-- **PostgreSQL does everything** — Entities, relationships, chat, search via JSONB + GIN indexes. No graph DB.
-- **Custom chat agent** — ~50 lines of core logic for the tool-calling loop.
-- **One class per file, constructor injection, async everywhere** — Predictable, testable patterns.
-- **Background processing via asyncio.create_task** — No Celery for v1; status tracked in the database.
+## Design Decisions
+
+- **Hexagonal architecture** -- Domain logic has zero framework dependencies, making it testable and portable.
+- **Direct CSV parsing** -- Structured data bypasses the LLM entirely; LLM is reserved for unstructured content (PDFs, text, URLs).
+- **Defensive filter handling** -- Numeric string coercion + case-insensitive comparisons to handle LLM non-determinism.
+- **Split Keycloak URL config** -- Separate issuer URL (for token validation) from JWKS URL (for key fetching) to handle Docker network DNS differences.
+- **Session-scoped WebSocket** -- Each chat session gets its own WebSocket connection with automatic session creation on first message.
+
+## What We'd Improve With More Time
+
+- **Document sharing between users** -- Currently documents are user-scoped via Row-Level Security. Sharing would enable collaborative knowledge bases where teams pool documents and query across them.
+- **Graph database backend** -- Entities and relationships live in PostgreSQL with JSONB. A dedicated graph database (Neo4j, or Apache AGE as a Postgres extension) would enable richer traversal queries that are awkward with relational joins.
+- **Smarter ingestion pipeline** -- More document formats, chunked processing for large files, and an LLM enrichment pass after direct parsing to infer relationships between entities.
+- **Real-time collaboration** -- WebSocket-based live updates when another user uploads a document or adds knowledge that affects shared entities.
