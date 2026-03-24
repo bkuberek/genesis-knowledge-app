@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -9,9 +10,18 @@ from fastapi.staticfiles import StaticFiles
 from knowledge_api.dependencies.auth import set_auth_adapter
 from knowledge_api.dependencies.container import container
 
+logger = logging.getLogger(__name__)
+
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:8000",
+]
+
+MCP_TOOL_OPERATIONS = [
+    "search_knowledge",
+    "add_knowledge",
+    "get_entity",
+    "get_document_entities",
 ]
 
 
@@ -46,6 +56,7 @@ def create_app() -> FastAPI:
         return {"status": "healthy"}
 
     _register_routers(app)
+    _mount_mcp(app)
     _mount_frontend(app)
 
     return app
@@ -66,6 +77,26 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(graph_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
     app.include_router(ws_router)
+
+
+def _mount_mcp(app: FastAPI) -> None:
+    """Mount MCP server exposing selected operations as tools."""
+    try:
+        from fastapi_mcp import FastApiMCP
+
+        mcp = FastApiMCP(
+            app,
+            name="Knowledge MCP",
+            description="Knowledge management tools",
+            include_operations=MCP_TOOL_OPERATIONS,
+        )
+        mcp.mount_http()
+        logger.info("MCP server mounted at /mcp")
+    except Exception:
+        logger.warning(
+            "Failed to mount MCP server — fastapi-mcp may not be installed",
+            exc_info=True,
+        )
 
 
 def _mount_frontend(app: FastAPI) -> None:
