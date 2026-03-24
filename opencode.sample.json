@@ -6,7 +6,7 @@
       "name": "LiteLLM",
       "options": {
         "baseURL": "https://litellm-production-f079.up.railway.app/v1",
-        "apiKey": "env:LITE_LLM_PROXY_API_KEY"
+        "apiKey": "your-litellm-virtual-key-here"
       },
       "models": {
         "opus-4.6": {

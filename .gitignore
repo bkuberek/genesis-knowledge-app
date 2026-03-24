@@ -24,6 +24,7 @@ uv.lock
 # Environment
 .env
 .secrets.toml
+opencode.json
 
 # Data
 data/documents/*
